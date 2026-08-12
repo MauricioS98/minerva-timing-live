@@ -121,4 +121,18 @@ export async function ensureDbSchema(): Promise<void> {
     await pool.query(fs.readFileSync(migPath, "utf8"));
     console.log("Migración published_start_order aplicada");
   }
+
+  const csvSourceCol = await pool.query<{ attname: string }>(
+    `SELECT a.attname
+     FROM pg_attribute a
+     JOIN pg_class c ON a.attrelid = c.oid
+     JOIN pg_namespace n ON c.relnamespace = n.oid
+     WHERE n.nspname = 'public' AND c.relname = 'events'
+       AND a.attname = 'csv_source' AND NOT a.attisdropped`
+  );
+  if (!csvSourceCol.rows[0]) {
+    const migPath = path.resolve(__dirname, "../../db/07_csv_source.sql");
+    await pool.query(fs.readFileSync(migPath, "utf8"));
+    console.log("Migración csv_source aplicada");
+  }
 }

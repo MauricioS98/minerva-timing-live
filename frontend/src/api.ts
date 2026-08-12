@@ -246,6 +246,7 @@ export const api = {
         boardPageSeconds?: number;
         overlayVariant?: "classic" | "redbull";
         overlayTiming?: "splits" | "total";
+        csvSource?: "auto" | "orbits4" | "orbits5";
       };
       board: ResultsBoardEntry[];
       sections: {

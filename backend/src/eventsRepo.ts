@@ -59,6 +59,10 @@ function mapEventRow(row: Record<string, unknown>): Omit<
       String(row.overlay_variant || "classic") === "redbull" ? "redbull" : "classic",
     overlayTiming:
       String(row.overlay_timing || "splits") === "total" ? "total" : "splits",
+    csvSource:
+      row.csv_source === "orbits4" || row.csv_source === "orbits5"
+        ? (row.csv_source as "orbits4" | "orbits5")
+        : "auto",
     publishedStartOrder:
       row.published_start_order_test_id && row.published_start_order_part_id
         ? {
@@ -403,11 +407,13 @@ export async function getPartUploadContext(
   combinedScoring: "time" | "laps" | undefined;
   expectedLaps: number | null;
   firstTimingPointId: string | null;
+  csvSource: "auto" | "orbits4" | "orbits5";
 } | null> {
   const r = await q(
     pool,
     `SELECT
        e.id AS event_id,
+       e.csv_source,
        t.id AS test_id,
        p.id AS part_id,
        p.name AS part_name,
@@ -444,6 +450,10 @@ export async function getPartUploadContext(
     firstTimingPointId: row.first_timing_point_id
       ? String(row.first_timing_point_id)
       : null,
+    csvSource:
+      row.csv_source === "orbits4" || row.csv_source === "orbits5"
+        ? (row.csv_source as "orbits4" | "orbits5")
+        : "auto",
   };
 }
 

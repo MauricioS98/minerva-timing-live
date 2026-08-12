@@ -236,10 +236,10 @@ export async function persistEvent(event: Event): Promise<Event> {
       client,
       `INSERT INTO events (
         id, name, event_date, location, header_image, footer_text, password,
-        theme_colors, board_page_seconds, overlay_variant, overlay_timing,
+        theme_colors, board_page_seconds, overlay_variant, overlay_timing, csv_source,
         published_start_order_test_id, published_start_order_part_id,
         created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::timestamptz,$15::timestamptz)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::timestamptz,$16::timestamptz)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         event_date = EXCLUDED.event_date,
@@ -251,6 +251,7 @@ export async function persistEvent(event: Event): Promise<Event> {
         board_page_seconds = EXCLUDED.board_page_seconds,
         overlay_variant = EXCLUDED.overlay_variant,
         overlay_timing = EXCLUDED.overlay_timing,
+        csv_source = EXCLUDED.csv_source,
         published_start_order_test_id = EXCLUDED.published_start_order_test_id,
         published_start_order_part_id = EXCLUDED.published_start_order_part_id,
         updated_at = EXCLUDED.updated_at`,
@@ -266,6 +267,9 @@ export async function persistEvent(event: Event): Promise<Event> {
         Math.min(120, Math.max(3, Math.round(event.boardPageSeconds ?? 10))),
         event.overlayVariant === "redbull" ? "redbull" : "classic",
         event.overlayTiming === "total" ? "total" : "splits",
+        event.csvSource === "orbits4" || event.csvSource === "orbits5"
+          ? event.csvSource
+          : "auto",
         event.publishedStartOrder?.testId ?? null,
         event.publishedStartOrder?.partId ?? null,
         event.createdAt,

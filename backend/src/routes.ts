@@ -105,6 +105,7 @@ function emptyEvent(body: Partial<Event> & { password?: string }): Event {
     boardPageSeconds: 10,
     overlayVariant: "classic",
     overlayTiming: "splits",
+    csvSource: "auto",
     publishedStartOrder: null,
     createdAt: now,
     updatedAt: now,
@@ -117,6 +118,11 @@ function sanitizeOverlayVariant(value: unknown): "classic" | "redbull" {
 
 function sanitizeOverlayTiming(value: unknown): "splits" | "total" {
   return value === "total" ? "total" : "splits";
+}
+
+function sanitizeCsvSource(value: unknown): "auto" | "orbits4" | "orbits5" {
+  if (value === "orbits4" || value === "orbits5") return value;
+  return "auto";
 }
 
 // ─── Events ───────────────────────────────────────────────
@@ -186,6 +192,12 @@ router.put("/events/:id", async (req, res) => {
         : existing.overlayTiming === "total"
           ? "total"
           : "splits",
+    csvSource:
+      req.body.csvSource !== undefined
+        ? sanitizeCsvSource(req.body.csvSource)
+        : existing.csvSource === "orbits4" || existing.csvSource === "orbits5"
+          ? existing.csvSource
+          : "auto",
     themeColors:
       req.body.themeColors === undefined
         ? existing.themeColors ?? null
@@ -491,8 +503,14 @@ router.post(
       return res.status(400).json({ error: "timingPointId requerido" });
     }
 
-    const content = req.file.buffer.toString("utf-8");
-    const parsed = parseTimingCsv(content, req.file.originalname);
+    const content = req.file.buffer;
+    const preference =
+      req.body.csvSource === "orbits4" ||
+      req.body.csvSource === "orbits5" ||
+      req.body.csvSource === "auto"
+        ? req.body.csvSource
+        : ctx.csvSource;
+    const parsed = parseTimingCsv(content, req.file.originalname, preference);
 
     const slotId = ctx.combinedMode
       ? ctx.firstTimingPointId || timingPointId || "combined"
@@ -538,6 +556,8 @@ router.post(
           passages: parsed.racePassages,
           racePassages: parsed.racePassages,
           flags: parsed.flags,
+          sourceFormat: parsed.sourceFormat,
+          deletedSkipped: parsed.deletedSkipped,
         },
       },
       partMeta: {
@@ -552,6 +572,8 @@ router.post(
         filename: parsed.filename,
         pilots: parsed.racePassages.length,
         uniquePilots: new Set(parsed.racePassages.map((p) => p.number)).size,
+        sourceFormat: parsed.sourceFormat,
+        deletedSkipped: parsed.deletedSkipped || 0,
         flags: parsed.flags.map((f) => ({ type: f.type, label: f.label, time: f.tmPasosRaw })),
       },
     });

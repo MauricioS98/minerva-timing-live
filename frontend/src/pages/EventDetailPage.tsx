@@ -257,6 +257,10 @@ export function EventDetailPage() {
       ),
       overlayVariant: fd.get("overlayVariant") === "redbull" ? "redbull" : "classic",
       overlayTiming: fd.get("overlayTiming") === "total" ? "total" : "splits",
+      csvSource:
+        fd.get("csvSource") === "orbits4" || fd.get("csvSource") === "orbits5"
+          ? (fd.get("csvSource") as "orbits4" | "orbits5")
+          : "auto",
       themeColors: isDefault ? null : themeColors,
     };
 
@@ -466,7 +470,12 @@ export function EventDetailPage() {
         timingPointId,
         part.combinedMode
       );
-      const summary = res.summary as { uniquePilots: number; flags: { type: string; label: string }[] };
+      const summary = res.summary as {
+        uniquePilots: number;
+        flags: { type: string; label: string }[];
+        sourceFormat?: "orbits4" | "orbits5";
+        deletedSkipped?: number;
+      };
       const slot = res.slot as PartCsvSlot;
       const meta = res.partMeta;
       // Merge only the uploaded slot — never replace sibling CSVs or reload the event.
@@ -497,9 +506,17 @@ export function EventDetailPage() {
           ),
         };
       });
+      const fmtLabel = summary.sourceFormat === "orbits4" ? "Orbits 4" : "Orbits 5";
+      const skipped =
+        summary.deletedSkipped && summary.deletedSkipped > 0
+          ? ` · ${summary.deletedSkipped} pasada(s) borrada(s) omitida(s)`
+          : "";
       setMsg(
-        `CSV cargado: ${summary.uniquePilots} pilotos en carrera` +
-          (summary.flags?.length ? ` · Banderas: ${summary.flags.map((f) => f.label).join(", ")}` : "")
+        `CSV cargado (${fmtLabel}): ${summary.uniquePilots} pilotos en carrera` +
+          skipped +
+          (summary.flags?.length
+            ? ` · Banderas: ${summary.flags.map((f) => f.label).join(", ")}`
+            : "")
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al subir CSV");
@@ -667,6 +684,49 @@ export function EventDetailPage() {
                 <span>
                   <strong>Solo total</strong>
                   <small>Una sola casilla de tiempo por piloto</small>
+                </span>
+              </label>
+            </div>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.85rem 0 0.55rem" }}>
+              Formato de CSV de cronometraje (Orbits)
+            </p>
+            <div className="overlay-variant-options">
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="auto"
+                  defaultChecked={
+                    event.csvSource !== "orbits4" && event.csvSource !== "orbits5"
+                  }
+                />
+                <span>
+                  <strong>Auto</strong>
+                  <small>Detecta Orbits 5 si hay columna Borrado; si no, Orbits 4</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="orbits5"
+                  defaultChecked={event.csvSource === "orbits5"}
+                />
+                <span>
+                  <strong>Orbits 5</strong>
+                  <small>Ignora filas con Borrado = Yes</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="orbits4"
+                  defaultChecked={event.csvSource === "orbits4"}
+                />
+                <span>
+                  <strong>Orbits 4</strong>
+                  <small>Sin Borrado: descarta pasadas donde Vueltas no aumente</small>
                 </span>
               </label>
             </div>

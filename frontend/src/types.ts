@@ -165,6 +165,11 @@ export interface Event {
   overlayVariant?: "classic" | "redbull";
   /** Overlay: 3 times (trayectos + total) or total only */
   overlayTiming?: "splits" | "total";
+  /**
+   * Lectura de CSV Orbits: auto (detecta Borrado), orbits5 (columna Borrado),
+   * orbits4 (Vueltas sin incrementar = borrada).
+   */
+  csvSource?: "auto" | "orbits4" | "orbits5";
   /** Single published Orden de salida for the VS overlay */
   publishedStartOrder?: { testId: string; partId: string } | null;
   /** 4 colores del evento: [acento, resaltado, fondo paneles, texto]. null = paleta Minerva Timing */

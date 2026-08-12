@@ -64,6 +64,10 @@ function normalizeLoaded(event: Event): Event {
     event.overlayVariant === "redbull" ? "redbull" : "classic";
   event.overlayTiming =
     event.overlayTiming === "total" ? "total" : "splits";
+  event.csvSource =
+    event.csvSource === "orbits4" || event.csvSource === "orbits5"
+      ? event.csvSource
+      : "auto";
   event.publishedStartOrder =
     event.publishedStartOrder?.testId && event.publishedStartOrder?.partId
       ? {

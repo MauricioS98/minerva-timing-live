@@ -70,6 +70,10 @@ export interface ParsedCsv {
   flags: FlagEvent[];
   /** Passages inside green → stopped/checkered windows */
   racePassages: Passage[];
+  /** Detected or forced Orbits reader used when parsing */
+  sourceFormat?: "orbits4" | "orbits5";
+  /** Soft-deleted hits skipped (Borrado=Yes or Vueltas sin incrementar) */
+  deletedSkipped?: number;
 }
 
 export interface PartCsvSlot {
@@ -216,6 +220,11 @@ export interface Event {
   overlayVariant?: "classic" | "redbull";
   /** Overlay times: sector traps + total, or total only */
   overlayTiming?: "splits" | "total";
+  /**
+   * CSV reader for Orbits exports.
+   * auto = detect from headers (Borrado → Orbits 5; sin Borrado → Orbits 4).
+   */
+  csvSource?: "auto" | "orbits4" | "orbits5";
   /** Single published Orden de salida for the VS overlay (null = none) */
   publishedStartOrder?: { testId: string; partId: string } | null;
   createdAt: string;
