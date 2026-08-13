@@ -1,6 +1,49 @@
-import type { Event, FusionRow, Pilot, ResultRow, SavedFusion } from "./types";
+import type { Event, FusionRow, Pilot, ResultRow, ResultsBoardEntry, SavedFusion } from "./types";
 
-const BASE = "/api";
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+/** Base de la API (`/api` en local; URL absoluta en producción). */
+export const API_BASE = trimTrailingSlash(
+  import.meta.env.VITE_API_BASE_URL || "/api"
+);
+
+/** Base de uploads (`/uploads` en local; URL absoluta en producción). */
+export const UPLOADS_BASE = trimTrailingSlash(
+  import.meta.env.VITE_UPLOADS_BASE_URL || "/uploads"
+);
+
+/**
+ * Origen del backend para enlaces absolutos (feeds, etc.).
+ * En local suele ser http://localhost:4000; en nube, la URL del servicio API.
+ */
+export const BACKEND_ORIGIN = trimTrailingSlash(
+  import.meta.env.VITE_BACKEND_ORIGIN ||
+    (API_BASE.startsWith("http")
+      ? (() => {
+          try {
+            return new URL(API_BASE).origin;
+          } catch {
+            return "";
+          }
+        })()
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : "")
+);
+
+const BASE = API_BASE;
+
+/** Absolute API URL for links shown to the user (feeds, exports opened in a new tab). */
+export function absoluteApiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (API_BASE.startsWith("http")) return `${API_BASE}${p}`;
+  const origin =
+    BACKEND_ORIGIN ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return `${origin}${API_BASE}${p}`;
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, options);
@@ -27,6 +70,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteEvent: (id: string) => request<{ ok: boolean }>(`/events/${id}`, { method: "DELETE" }),
+
+  unlockEvent: (id: string, password: string) =>
+    request<{ ok: boolean }>(`/events/${id}/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    }),
 
   updateTimingPoints: (id: string, timingPoints: unknown[]) =>
     request<Event>(`/events/${id}/timing-points`, {
@@ -56,6 +106,9 @@ export const api = {
       showDescriptionInPdf?: boolean;
       fromPointId?: string | null;
       toPointId?: string | null;
+      timingMode?: "point_to_point" | "start_finish_partial";
+      startFinishPointId?: string | null;
+      partialPointIds?: string[];
     }
   ) =>
     request(`/events/${eventId}/tests/${testId}`, {
@@ -90,12 +143,50 @@ export const api = {
       combinedMode?: boolean;
       combinedScoring?: "time" | "laps";
       expectedLaps?: number | null;
+      startOrderVs?: { a: string; b: string }[];
     }
   ) =>
     request(`/events/${eventId}/tests/${testId}/parts/${partId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    }),
+
+  getOrdenSalida: (eventId: string) =>
+    request<{
+      event: {
+        id: string;
+        name: string;
+        overlayVariant?: "classic" | "redbull";
+        boardPageSeconds?: number;
+        publishedStartOrder?: { testId: string; partId: string } | null;
+      };
+      pilots: { number: string; name: string }[];
+      tests: {
+        id: string;
+        name: string;
+        parts: {
+          id: string;
+          name: string;
+          order: number;
+          startOrderVs: { a: string; b: string }[];
+        }[];
+      }[];
+    }>(`/events/${eventId}/orden-salida`),
+
+  publishOrdenSalida: (eventId: string, testId: string, partId: string) =>
+    request<{ publishedStartOrder: { testId: string; partId: string } }>(
+      `/events/${eventId}/orden-salida/publish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testId, partId }),
+      }
+    ),
+
+  unpublishOrdenSalida: (eventId: string) =>
+    request<{ publishedStartOrder: null }>(`/events/${eventId}/orden-salida/publish`, {
+      method: "DELETE",
     }),
   deletePart: (eventId: string, testId: string, partId: string) =>
     request(`/events/${eventId}/tests/${testId}/parts/${partId}`, { method: "DELETE" }),
@@ -112,10 +203,25 @@ export const api = {
     fd.append("file", file);
     fd.append("timingPointId", timingPointId);
     if (combinedMode) fd.append("combinedMode", "true");
-    return request<{ part: unknown; summary: unknown }>(
-      `/events/${eventId}/tests/${testId}/parts/${partId}/csv`,
-      { method: "POST", body: fd }
-    );
+    return request<{
+      slot: {
+        timingPointId: string;
+        filename: string;
+        parsed: unknown;
+      };
+      partMeta: {
+        id: string;
+        name: string;
+        order: number;
+        combinedMode: boolean;
+        combinedScoring?: "time" | "laps";
+        expectedLaps: number | null;
+      };
+      summary: unknown;
+    }>(`/events/${eventId}/tests/${testId}/parts/${partId}/csv`, {
+      method: "POST",
+      body: fd,
+    });
   },
 
   getResults: (eventId: string, testId: string, params: Record<string, string | undefined>) => {
@@ -169,6 +275,48 @@ export const api = {
     if (name) q.set("name", name);
     return `${BASE}/events/${eventId}/fusion/export/${format}?${q}`;
   },
+
+  getBoard: (eventId: string) =>
+    request<{
+      event: {
+        id: string;
+        themeColors: string[] | null;
+        name: string;
+        date: string;
+        location: string;
+        headerImage: string | null;
+        footerText: string;
+        boardPageSeconds?: number;
+        overlayVariant?: "classic" | "redbull";
+        overlayTiming?: "splits" | "total";
+        csvSource?: "auto" | "orbits4" | "orbits5";
+      };
+      board: ResultsBoardEntry[];
+      sections: {
+        entry: ResultsBoardEntry;
+        kind: "unified" | "fusion";
+        title: string;
+        rows: ResultRow[] | FusionRow[];
+        warning: string | null;
+        tests: { id: string; name: string; segmentLabel: string }[] | null;
+      }[];
+    }>(`/events/${eventId}/board`),
+
+  publishToBoard: (
+    eventId: string,
+    data: { kind: "unified" | "fusion"; refId: string; title?: string; partId?: string | null }
+  ) =>
+    request<ResultsBoardEntry>(`/events/${eventId}/board`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  unpublishFromBoard: (eventId: string, entryId: string) =>
+    request<{ ok: boolean; resultsBoard: ResultsBoardEntry[] }>(
+      `/events/${eventId}/board/${entryId}`,
+      { method: "DELETE" }
+    ),
 
   savePenalty: (
     eventId: string,

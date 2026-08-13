@@ -1,0 +1,38 @@
+{
+  "id": "12deca8f-de94-4067-a138-19f2f2c4b15f",
+  "name": "Red Bull Moto Urbano",
+  "date": "2026-08-02",
+  "location": "Calle 85, Bogotá",
+  "headerImage": null,
+  "footerText": "Minerva Timing",
+  "password": "RedBull",
+  "themeColors": [
+    "#b90c12",
+    "#4b29f5",
+    "#1e1d1d",
+    "#ffffff"
+  ],
+  "timingPoints": [
+    {
+      "id": "17198bb9-79c7-4edc-9ba5-2257fe4e4be4",
+      "name": "PC A",
+      "offsetMs": 0,
+      "order": 0,
+      "role": "start_finish"
+    },
+    {
+      "id": "0a4f7899-7e4a-4b0d-87bb-1f44c93e5bdf",
+      "name": "PC B",
+      "offsetMs": 210000,
+      "order": 1,
+      "role": "partial"
+    }
+  ],
+  "pilots": [],
+  "tests": [],
+  "fusions": [],
+  "resultsBoard": [],
+  "boardPageSeconds": 10,
+  "createdAt": "2026-07-28T21:00:21.841Z",
+  "updatedAt": "2026-07-28T21:01:13.648Z"
+}

@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, formatOffsetInput, formatPenaltyInput, parseOffsetToMs } from "../api";
+import { api, UPLOADS_BASE, formatOffsetInput, formatPenaltyInput, parseOffsetToMs } from "../api";
 import { ConfirmDialog, type ConfirmDialogState } from "../components/ConfirmDialog";
 import { canDeletePart, canDeleteTest } from "../lib/deleteGuards";
-import type { Event, ResultRow, Test, TestPart, TimingPoint } from "../types";
+import { isEventUnlocked, markEventUnlocked } from "../lib/eventAuth";
+import { matchesPilotSearch } from "../lib/search";
+import type {
+  Event,
+  PartCsvSlot,
+  ResultRow,
+  StartOrderVsPair,
+  Test,
+  TestPart,
+  TimingPoint,
+} from "../types";
+import { MINERVA_COLORS, THEME_COLOR_LABELS, resolveThemeColors } from "../theme";
 import { EventPilotsSection } from "./EventPilotsSection";
 import { EventFusionPanel } from "./EventFusionPanel";
+import { StartOrderVsEditor } from "../components/StartOrderVsEditor";
 
 function msFromOffset(raw: string): number {
   let s = raw.trim().replace(",", ".");
@@ -55,11 +67,21 @@ export function EventDetailPage() {
   const [savingPenalty, setSavingPenalty] = useState<string | null>(null);
   const [dialog, setDialog] = useState<ConfirmDialogState | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
+  const [publishingKey, setPublishingKey] = useState<string | null>(null);
+  const [themeColors, setThemeColors] = useState<string[]>([...MINERVA_COLORS]);
+  const [resultsSearchByTest, setResultsSearchByTest] = useState<Record<string, string>>({});
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
     const ev = await api.getEvent(id);
     setEvent(ev);
+    setThemeColors(resolveThemeColors(ev.themeColors));
     setOffsetDrafts(
       Object.fromEntries(ev.timingPoints.map((p) => [p.id, formatOffsetInput(p.offsetMs)]))
     );
@@ -73,8 +95,30 @@ export function EventDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
+    setUnlocked(isEventUnlocked(id));
+  }, [id]);
+
+  useEffect(() => {
     load().catch((e) => setError(e.message));
   }, [load]);
+
+  const tryUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setUnlocking(true);
+    setUnlockError("");
+    try {
+      await api.unlockEvent(id, unlockPassword);
+      markEventUnlocked(id);
+      setUnlocked(true);
+      setUnlockPassword("");
+    } catch (err) {
+      setUnlockError(err instanceof Error ? err.message : "Contraseña incorrecta");
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   const toggleTest = (testId: string) => {
     setExpandedTests((prev) => ({ ...prev, [testId]: !prev[testId] }));
@@ -151,18 +195,92 @@ export function EventDetailPage() {
     return <div className="empty">{error || "Cargando evento…"}</div>;
   }
 
+  if (!unlocked) {
+    return (
+      <div className="event-lock">
+        <div className="card event-lock-card">
+          <Link to="/" className="event-manage-back">
+            ← Eventos
+          </Link>
+          <p className="manage-section-kicker">Acceso restringido</p>
+          <h2>{event.name}</h2>
+          <p className="muted">
+            Ingresa la contraseña del evento para abrir el panel de gestión.
+            {event.date || event.location
+              ? ` · ${[event.date, event.location].filter(Boolean).join(" · ")}`
+              : ""}
+          </p>
+          <form className="form" onSubmit={tryUnlock}>
+            <div className="field">
+              <label>Contraseña</label>
+              <input
+                type="password"
+                value={unlockPassword}
+                onChange={(e) => setUnlockPassword(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+                required
+              />
+            </div>
+            {unlockError && <div className="alert alert-error">{unlockError}</div>}
+            <button className="btn btn-primary" disabled={unlocking}>
+              {unlocking ? "Verificando…" : "Entrar al panel"}
+            </button>
+          </form>
+          <div className="event-lock-footer">
+            <a className="btn btn-ghost btn-sm" href={`/tablero/${event.id}`} target="_blank" rel="noreferrer">
+              Tablero público
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const points = [...event.timingPoints].sort((a, b) => a.order - b.order);
 
   const saveMeta = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await api.updateEvent(event.id, {
+    const isDefault =
+      themeColors.length === 4 &&
+      themeColors.every((c, i) => c.toLowerCase() === MINERVA_COLORS[i].toLowerCase());
+
+    const payload: Parameters<typeof api.updateEvent>[1] = {
       name: String(fd.get("name") || ""),
       date: String(fd.get("date") || ""),
       location: String(fd.get("location") || ""),
       footerText: String(fd.get("footerText") || ""),
-    });
-    setMsg("Evento actualizado");
+      boardPageSeconds: Math.min(
+        120,
+        Math.max(3, Math.round(Number(fd.get("boardPageSeconds")) || 10))
+      ),
+      overlayVariant: fd.get("overlayVariant") === "redbull" ? "redbull" : "classic",
+      overlayTiming: fd.get("overlayTiming") === "total" ? "total" : "splits",
+      csvSource:
+        fd.get("csvSource") === "orbits4" || fd.get("csvSource") === "orbits5"
+          ? (fd.get("csvSource") as "orbits4" | "orbits5")
+          : "auto",
+      themeColors: isDefault ? null : themeColors,
+    };
+
+    const pw = newPassword.trim();
+    if (pw) {
+      if (!/^[a-zA-Z0-9]+$/.test(pw)) {
+        setError("La nueva contraseña solo puede contener letras y números");
+        return;
+      }
+      if (pw !== newPassword2.trim()) {
+        setError("Las contraseñas nuevas no coinciden");
+        return;
+      }
+      payload.password = pw;
+    }
+
+    await api.updateEvent(event.id, payload);
+    setNewPassword("");
+    setNewPassword2("");
+    setMsg(pw ? "Evento actualizado (contraseña cambiada)" : "Evento actualizado");
     load();
   };
 
@@ -253,6 +371,40 @@ export function EventDetailPage() {
     });
   };
 
+  const publishUnified = async (test: Test, title: string, partId?: string | null) => {
+    const key = partId ? `part:${test.id}:${partId}` : `unified:${test.id}`;
+    setPublishingKey(key);
+    setError("");
+    try {
+      await api.publishToBoard(event.id, {
+        kind: "unified",
+        refId: test.id,
+        title,
+        partId: partId || null,
+      });
+      await load();
+      setMsg(`«${title}» publicado en el tablero`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al publicar");
+    } finally {
+      setPublishingKey(null);
+    }
+  };
+
+  const unpublishEntry = async (entryId: string, label: string) => {
+    setPublishingKey(entryId);
+    setError("");
+    try {
+      await api.unpublishFromBoard(event.id, entryId);
+      await load();
+      setMsg(`«${label}» quitado del tablero`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al despublicar");
+    } finally {
+      setPublishingKey(null);
+    }
+  };
+
   const requestDeletePart = async (test: Test, part: TestPart) => {
     if (!event) return;
     let freshEvent = event;
@@ -318,39 +470,125 @@ export function EventDetailPage() {
         timingPointId,
         part.combinedMode
       );
-      const summary = res.summary as { uniquePilots: number; flags: { type: string; label: string }[] };
+      const summary = res.summary as {
+        uniquePilots: number;
+        flags: { type: string; label: string }[];
+        sourceFormat?: "orbits4" | "orbits5";
+        deletedSkipped?: number;
+      };
+      const slot = res.slot as PartCsvSlot;
+      const meta = res.partMeta;
+      // Merge only the uploaded slot — never replace sibling CSVs or reload the event.
+      setEvent((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tests: prev.tests.map((t) =>
+            t.id !== testId
+              ? t
+              : {
+                  ...t,
+                  parts: t.parts.map((p) => {
+                    if (p.id !== part.id) return p;
+                    const csvs = [...(p.csvs || [])];
+                    const idx = csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+                    if (idx >= 0) csvs[idx] = slot;
+                    else csvs.push(slot);
+                    return {
+                      ...p,
+                      combinedMode: meta.combinedMode,
+                      combinedScoring: meta.combinedScoring ?? p.combinedScoring,
+                      expectedLaps: meta.expectedLaps ?? p.expectedLaps,
+                      csvs,
+                    };
+                  }),
+                }
+          ),
+        };
+      });
+      const fmtLabel = summary.sourceFormat === "orbits4" ? "Orbits 4" : "Orbits 5";
+      const skipped =
+        summary.deletedSkipped && summary.deletedSkipped > 0
+          ? ` · ${summary.deletedSkipped} pasada(s) borrada(s) omitida(s)`
+          : "";
       setMsg(
-        `CSV cargado: ${summary.uniquePilots} pilotos en carrera` +
-          (summary.flags?.length ? ` · Banderas: ${summary.flags.map((f) => f.label).join(", ")}` : "")
+        `CSV cargado (${fmtLabel}): ${summary.uniquePilots} pilotos en carrera` +
+          skipped +
+          (summary.flags?.length
+            ? ` · Banderas: ${summary.flags.map((f) => f.label).join(", ")}`
+            : "")
       );
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al subir CSV");
     }
   };
 
   return (
-    <div>
-      <div className="page-head">
-        <div>
-          <p className="muted" style={{ marginBottom: "0.35rem" }}>
-            <Link to="/">← Eventos</Link>
-          </p>
+    <div className="event-manage">
+      <div className="event-manage-hero">
+        <div className="event-manage-hero-main">
+          <Link to="/" className="event-manage-back">
+            ← Eventos
+          </Link>
           <h1>{event.name}</h1>
-          <p>
-            {[event.date, event.location].filter(Boolean).join(" · ") || "Configura fecha y lugar"}
+          <p className="event-manage-meta">
+            {[event.date, event.location].filter(Boolean).join(" · ") ||
+              "Configura fecha y lugar en datos del evento"}
           </p>
+          <div className="event-manage-stats">
+            <span className="chip">{event.tests.length} pruebas</span>
+            <span className="chip">{(event.pilots || []).length} pilotos</span>
+            <span className="chip">{event.timingPoints.length} puntos</span>
+            <span className="chip">
+              {(event.resultsBoard || []).length} en tablero
+            </span>
+          </div>
+        </div>
+        <div className="page-head-actions">
+          <a
+            className="btn btn-secondary"
+            href={`/tablero/${event.id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Tablero público
+          </a>
+          <a
+            className="btn btn-ghost"
+            href={`/overlay/${event.id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Overlay
+          </a>
+          <a
+            className="btn btn-ghost"
+            href={`/overlay/${event.id}/orden-salida`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Orden de salida
+          </a>
         </div>
       </div>
 
-      {error && <div className="alert alert-error" style={{ marginBottom: "1rem" }}>{error}</div>}
-      {msg && <div className="alert" style={{ marginBottom: "1rem" }}>{msg}</div>}
+      {error && <div className="alert alert-error">{error}</div>}
+      {msg && <div className="alert alert-ok">{msg}</div>}
+
+      <section className="manage-section">
+        <header className="manage-section-head">
+          <span className="manage-section-kicker">01 · Configuración</span>
+          <h2>Identidad y cronometraje</h2>
+          <p>Datos del evento, colores de transmisión y puntos de control.</p>
+        </header>
 
       <div className="setup-layout">
         <form className="setup-panel form" onSubmit={saveMeta}>
           <header className="setup-panel-head">
-            <h3>Datos del evento</h3>
-            <p>Identidad del evento e imagen para exportaciones PDF.</p>
+            <div>
+              <h3>Datos del evento</h3>
+              <p>Identidad, seguridad e imagen para exportaciones PDF.</p>
+            </div>
           </header>
 
           <div className="field">
@@ -371,6 +609,181 @@ export function EventDetailPage() {
             <label>Texto pie de página (PDF)</label>
             <input name="footerText" defaultValue={event.footerText} />
           </div>
+          <div className="field">
+            <label>Cambio de página — tablero y overlay (segundos)</label>
+            <input
+              name="boardPageSeconds"
+              type="number"
+              min={3}
+              max={120}
+              step={1}
+              defaultValue={event.boardPageSeconds ?? 10}
+            />
+            <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
+              Tablero: 10 pilotos por página. Overlay RedBull: tiempo que permanece la página completa
+              tras aparecer todos los pilotos (cada piloto entra con ~1 s de separación).
+            </p>
+          </div>
+          <fieldset
+            className="field overlay-variant-field"
+            key={`ov-${event.id}-${event.updatedAt}`}
+          >
+            <legend>Overlay de transmisión</legend>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 0.55rem" }}>
+              Elige qué gráfico usa la URL <code>/overlay/{event.id}</code> (OBS / vMix).
+            </p>
+            <div className="overlay-variant-options">
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="overlayVariant"
+                  value="classic"
+                  defaultChecked={event.overlayVariant !== "redbull"}
+                />
+                <span>
+                  <strong>Overlay actual</strong>
+                  <small>Torre Minerva (classic)</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="overlayVariant"
+                  value="redbull"
+                  defaultChecked={event.overlayVariant === "redbull"}
+                />
+                <span>
+                  <strong>Overlay RedBull</strong>
+                  <small>Pieza gráfica + animación de filas</small>
+                </span>
+              </label>
+            </div>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.85rem 0 0.55rem" }}>
+              ¿Qué tiempos muestra el overlay?
+            </p>
+            <div className="overlay-variant-options">
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="overlayTiming"
+                  value="splits"
+                  defaultChecked={event.overlayTiming !== "total"}
+                />
+                <span>
+                  <strong>3 tiempos</strong>
+                  <small>1er / 2do trayecto + total (si hay parciales)</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="overlayTiming"
+                  value="total"
+                  defaultChecked={event.overlayTiming === "total"}
+                />
+                <span>
+                  <strong>Solo total</strong>
+                  <small>Una sola casilla de tiempo por piloto</small>
+                </span>
+              </label>
+            </div>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.85rem 0 0.55rem" }}>
+              Formato de CSV de cronometraje (Orbits)
+            </p>
+            <div className="overlay-variant-options">
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="auto"
+                  defaultChecked={
+                    event.csvSource !== "orbits4" && event.csvSource !== "orbits5"
+                  }
+                />
+                <span>
+                  <strong>Auto</strong>
+                  <small>Detecta Orbits 5 si hay columna Borrado; si no, Orbits 4</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="orbits5"
+                  defaultChecked={event.csvSource === "orbits5"}
+                />
+                <span>
+                  <strong>Orbits 5</strong>
+                  <small>Ignora filas con Borrado = Yes</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="csvSource"
+                  value="orbits4"
+                  defaultChecked={event.csvSource === "orbits4"}
+                />
+                <span>
+                  <strong>Orbits 4</strong>
+                  <small>Sin Borrado: descarta pasadas donde Vueltas no aumente</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div className="field">
+            <label>Cambiar contraseña del panel</label>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 0.4rem" }}>
+              Déjalo vacío para no cambiarla. Solo letras y números.
+            </p>
+            <div className="setup-inline-2">
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Nueva contraseña"
+                autoComplete="new-password"
+              />
+              <input
+                type="password"
+                value={newPassword2}
+                onChange={(e) => setNewPassword2(e.target.value)}
+                placeholder="Confirmar"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Colores del evento</label>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 0.4rem" }}>
+              Se usan en el tablero público y sobre todo en el overlay de transmisión. Si no
+              los cambias, se usa la paleta de Minerva Timing.
+            </p>
+            <div className="theme-colors-grid">
+              {themeColors.map((color, i) => (
+                <label key={i} className="theme-color-item">
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) =>
+                      setThemeColors((prev) => prev.map((c, j) => (j === i ? e.target.value : c)))
+                    }
+                  />
+                  <span>{THEME_COLOR_LABELS[i]}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ marginTop: "0.4rem" }}
+              onClick={() => setThemeColors([...MINERVA_COLORS])}
+            >
+              Restablecer paleta Minerva
+            </button>
+          </div>
 
           <div className="field">
             <label>Imagen de cabecera</label>
@@ -387,7 +800,7 @@ export function EventDetailPage() {
               <div className="header-preview-wrap">
                 <img
                   className="header-preview"
-                  src={`/uploads/headers/${event.headerImage}?t=${event.updatedAt}`}
+                  src={`${UPLOADS_BASE}/headers/${event.headerImage}?t=${event.updatedAt}`}
                   alt="Cabecera"
                 />
               </div>
@@ -399,17 +812,16 @@ export function EventDetailPage() {
 
         <div className="setup-panel">
           <header className="setup-panel-head">
-            <div>
-              <h3>Puntos de cronometraje</h3>
-              <p>
-                PC A es la referencia (desfase 0). Los demás van relativos a A · formato{" "}
-                <code>hh:mm:ss.xxx</code>
-              </p>
-            </div>
+            <h3>Puntos de cronometraje</h3>
             <button className="btn btn-secondary btn-sm" type="button" onClick={addPoint}>
               + Punto
             </button>
           </header>
+          <p className="setup-panel-hint">
+            PC A es la referencia (desfase 0). Si otro punto va{" "}
+            <strong>adelantado</strong> respecto a A, pon desfase <strong>positivo</strong> (se resta a
+            sus Tm). Si va atrasado, usa negativo. Formato <code>hh:mm:ss.xxx</code>.
+          </p>
 
           <div className="timing-list">
             {points.map((p, i) => (
@@ -431,7 +843,7 @@ export function EventDetailPage() {
                       }}
                     />
                   </div>
-                  <div className="field">
+                  <div className="field timing-offset-field">
                     <label>Desfase</label>
                     <input
                       value={i === 0 ? "00:00:00.000" : offsetDrafts[p.id] || "00:00:00.000"}
@@ -440,18 +852,20 @@ export function EventDetailPage() {
                       placeholder="00:02:36.245"
                     />
                   </div>
-                  {i > 0 ? (
-                    <button
-                      className="btn btn-danger btn-sm row-action"
-                      type="button"
-                      onClick={() => removePoint(p.id)}
-                      aria-label={`Eliminar ${p.name}`}
-                    >
-                      ×
-                    </button>
-                  ) : (
-                    <span className="row-action-spacer" aria-hidden="true" />
-                  )}
+                  <div className="timing-point-actions">
+                    {i > 0 ? (
+                      <button
+                        className="btn btn-danger btn-sm row-action"
+                        type="button"
+                        onClick={() => removePoint(p.id)}
+                        aria-label={`Eliminar ${p.name}`}
+                      >
+                        ×
+                      </button>
+                    ) : (
+                      <span className="row-action-spacer" aria-hidden="true" />
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -462,19 +876,34 @@ export function EventDetailPage() {
           </button>
         </div>
       </div>
+      </section>
 
-      <EventPilotsSection eventId={event.id} pilots={event.pilots || []} onChange={load} />
+      <section className="manage-section">
+        <header className="manage-section-head">
+          <span className="manage-section-kicker">02 · Inscripciones</span>
+          <h2>Pilotos</h2>
+          <p>Importa CSV o da de alta manualmente. La lista solo aplica a este evento.</p>
+        </header>
+        <EventPilotsSection eventId={event.id} pilots={event.pilots || []} onChange={load} />
+      </section>
 
-      <div className="section">
-        <div className="section-head">
-          <h2>Pruebas</h2>
+      <section className="manage-section">
+        <header className="manage-section-head manage-section-head-row">
+          <div>
+            <span className="manage-section-kicker">03 · Cronometraje</span>
+            <h2>Pruebas</h2>
+            <p>Mangas, salidas, CSV por punto y publicación al tablero.</p>
+          </div>
           <button className="btn btn-secondary" onClick={addTest}>
             + Nueva prueba
           </button>
-        </div>
+        </header>
 
         {event.tests.length === 0 ? (
-          <div className="empty">Crea una prueba (manga / categoría) para empezar a cargar CSV.</div>
+          <div className="empty empty-panel">
+            <strong>Sin pruebas aún</strong>
+            <span>Crea una manga o categoría para cargar CSV y calcular tiempos.</span>
+          </div>
         ) : (
           <div className="accordion">
             {event.tests.map((test) => {
@@ -484,6 +913,19 @@ export function EventDetailPage() {
               const testResults = resultsByTest[test.id];
               const showLapsCol =
                 testResults?.rows.some((r) => r.laps != null && r.laps > 0) ?? false;
+              const segmentLabels: string[] = [];
+              if (testResults?.rows) {
+                const seen = new Set<string>();
+                for (const r of testResults.rows) {
+                  for (const s of r.segments || []) {
+                    const key = `${s.from}→${s.to}`;
+                    if (!seen.has(key)) {
+                      seen.add(key);
+                      segmentLabels.push(key);
+                    }
+                  }
+                }
+              }
               const lapExportPartId =
                 testResults?.partId &&
                 test.parts.find((p) => p.id === testResults.partId)?.combinedScoring === "laps"
@@ -494,6 +936,13 @@ export function EventDetailPage() {
               const showLapByLapExport = Boolean(
                 lapExportPartId && testResults && testResults.rows.length > 0
               );
+              const resultsSearch = resultsSearchByTest[test.id] || "";
+              const filteredResultRows =
+                testResults?.rows.filter((r) =>
+                  matchesPilotSearch(resultsSearch, r.number, r.name)
+                ) ?? [];
+              const showCategoryCol =
+                testResults?.rows.some((r) => Boolean(r.category?.trim())) ?? false;
 
               return (
                 <div key={test.id} className={`accordion-item ${open ? "open" : ""}`}>
@@ -735,13 +1184,57 @@ export function EventDetailPage() {
                                   </div>
                                 )}
 
+                                <StartOrderVsEditor
+                                  eventId={event.id}
+                                  testId={test.id}
+                                  testName={test.name}
+                                  part={selectedPart}
+                                  pilots={event.pilots || []}
+                                  publishedStartOrder={event.publishedStartOrder ?? null}
+                                  save={async (pairs) => {
+                                    await api.updatePart(event.id, test.id, selectedPart.id, {
+                                      startOrderVs: pairs,
+                                    });
+                                  }}
+                                  onSaved={(pairs: StartOrderVsPair[]) => {
+                                    setEvent((prev) => {
+                                      if (!prev) return prev;
+                                      return {
+                                        ...prev,
+                                        tests: prev.tests.map((t) =>
+                                          t.id !== test.id
+                                            ? t
+                                            : {
+                                                ...t,
+                                                parts: t.parts.map((p) =>
+                                                  p.id === selectedPart.id
+                                                    ? { ...p, startOrderVs: pairs }
+                                                    : p
+                                                ),
+                                              }
+                                        ),
+                                      };
+                                    });
+                                  }}
+                                  onPublishedChange={(published) => {
+                                    setEvent((prev) =>
+                                      prev ? { ...prev, publishedStartOrder: published } : prev
+                                    );
+                                    setMsg(
+                                      published
+                                        ? "Orden de salida publicado en el overlay"
+                                        : "Orden de salida despublicado"
+                                    );
+                                  }}
+                                />
+
                                 {selectedPart.combinedMode ? (
                                   <CsvDrop
                                     label="CSV único"
                                     hint={
                                       selectedPart.combinedScoring === "laps"
                                         ? "Usa columnas Vueltas y T° Transcurrido"
-                                        : "Tiempo de vuelta ≠ 0 = tiempo de carrera"
+                                        : "1ª pasada = Start, 2ª = Finish (mismo archivo)"
                                     }
                                     filename={selectedPart.csvs[0]?.filename}
                                     onFile={(f) =>
@@ -781,8 +1274,9 @@ export function EventDetailPage() {
                                   Calcular resultado parcial
                                 </button>
                                 <p className="muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0" }}>
-                                  Si el CSV es acumulativo, solo se listan pilotos nuevos respecto a
-                                  salidas anteriores.
+                                  {selectedPart.combinedMode && selectedPart.combinedScoring !== "laps"
+                                    ? "Start y Finish salen del mismo CSV (1ª y 2ª pasada). Si el CSV es acumulativo entre salidas, solo se listan pilotos nuevos."
+                                    : "Si el CSV es acumulativo, solo se listan pilotos nuevos respecto a salidas anteriores."}
                                 </p>
                               </div>
                             )}
@@ -796,47 +1290,159 @@ export function EventDetailPage() {
                         </header>
 
                         <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 0.5rem" }}>
-                          Segmento guardado por prueba (Desde/Hasta). La fusión usa esta configuración
-                          de cada prueba por separado.
+                          {selectedPart?.combinedMode
+                            ? "Esta salida usa CSV único: Start y Finish se leen del mismo archivo."
+                            : "Configura cómo se miden los tiempos en esta prueba. La fusión usa esta configuración de cada prueba por separado."}
                         </p>
 
                         <div className="results-controls">
-                          <div className="field">
-                            <label>Desde</label>
+                          {selectedPart?.combinedMode ? (
+                            <div className="combined-results-note">
+                              {selectedPart.combinedScoring === "laps" ? (
+                                <p>
+                                  Clasificación por <strong>vueltas</strong> del CSV único (columnas de
+                                  vueltas / tiempo transcurrido).
+                                </p>
+                              ) : (
+                                <p>
+                                  Por tiempo: la <strong>1ª pasada</strong> es la salida y la{" "}
+                                  <strong>2ª</strong> la llegada (mismo CSV). Si solo hay una pasada con
+                                  Tiempo de vuelta &gt; 0, se usa ese valor.
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                          <div className="field" style={{ minWidth: "220px" }}>
+                            <label>Tipo de cronometraje</label>
                             <select
-                              value={test.fromPointId || points[0]?.id || ""}
+                              value={test.timingMode || "point_to_point"}
                               onChange={async (e) => {
+                                const timingMode =
+                                  e.target.value === "start_finish_partial"
+                                    ? "start_finish_partial"
+                                    : "point_to_point";
                                 await api.updateTest(event.id, test.id, {
-                                  fromPointId: e.target.value,
+                                  timingMode,
+                                  startFinishPointId:
+                                    test.startFinishPointId || points[0]?.id || null,
+                                  partialPointIds:
+                                    test.partialPointIds && test.partialPointIds.length > 0
+                                      ? test.partialPointIds
+                                      : points[1]?.id
+                                        ? [points[1].id]
+                                        : [],
                                 });
                                 load();
                               }}
                             >
-                              {points.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name}
-                                </option>
-                              ))}
+                              <option value="point_to_point">Punto a punto (Desde → Hasta)</option>
+                              <option value="start_finish_partial">
+                                Start/Finish + parcial (sectores + total)
+                              </option>
                             </select>
                           </div>
-                          <div className="field">
-                            <label>Hasta</label>
-                            <select
-                              value={test.toPointId || points[1]?.id || ""}
-                              onChange={async (e) => {
-                                await api.updateTest(event.id, test.id, {
-                                  toPointId: e.target.value,
-                                });
-                                load();
-                              }}
-                            >
-                              {points.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+
+                          {(test.timingMode || "point_to_point") === "point_to_point" ? (
+                            <>
+                              <div className="field">
+                                <label>Desde</label>
+                                <select
+                                  value={test.fromPointId || points[0]?.id || ""}
+                                  onChange={async (e) => {
+                                    await api.updateTest(event.id, test.id, {
+                                      fromPointId: e.target.value,
+                                    });
+                                    load();
+                                  }}
+                                >
+                                  {points.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="field">
+                                <label>Hasta</label>
+                                <select
+                                  value={test.toPointId || points[1]?.id || ""}
+                                  onChange={async (e) => {
+                                    await api.updateTest(event.id, test.id, {
+                                      toPointId: e.target.value,
+                                    });
+                                    load();
+                                  }}
+                                >
+                                  {points.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="field">
+                                <label>Start / Finish</label>
+                                <select
+                                  value={
+                                    test.startFinishPointId ||
+                                    test.fromPointId ||
+                                    points[0]?.id ||
+                                    ""
+                                  }
+                                  onChange={async (e) => {
+                                    await api.updateTest(event.id, test.id, {
+                                      startFinishPointId: e.target.value,
+                                    });
+                                    load();
+                                  }}
+                                >
+                                  {points.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="field">
+                                <label>Punto parcial</label>
+                                <select
+                                  value={
+                                    (test.partialPointIds && test.partialPointIds[0]) ||
+                                    test.toPointId ||
+                                    points[1]?.id ||
+                                    ""
+                                  }
+                                  onChange={async (e) => {
+                                    await api.updateTest(event.id, test.id, {
+                                      partialPointIds: e.target.value ? [e.target.value] : [],
+                                    });
+                                    load();
+                                  }}
+                                >
+                                  {points
+                                    .filter(
+                                      (p) =>
+                                        p.id !==
+                                        (test.startFinishPointId ||
+                                          test.fromPointId ||
+                                          points[0]?.id)
+                                    )
+                                    .map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            </>
+                          )}
+                            </>
+                          )}
+
                           <button
                             className="btn btn-primary results-run-btn"
                             onClick={() => refreshResults(test.id, null)}
@@ -844,6 +1450,15 @@ export function EventDetailPage() {
                             Unificado (mejor tiempo)
                           </button>
                         </div>
+
+                        {!selectedPart?.combinedMode &&
+                          (test.timingMode || "point_to_point") === "start_finish_partial" && (
+                          <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 0.75rem" }}>
+                            En este modo cada piloto debe tener <strong>2 pasadas</strong> en Start/Finish
+                            (salida y llegada) y <strong>1 pasada</strong> en el parcial entre ambas.
+                            El resultado muestra el tiempo Start→Parcial, Parcial→Finish y el total.
+                          </p>
+                        )}
 
                         {testResults?.title && (
                           <p className="results-title">{testResults.title}</p>
@@ -905,7 +1520,117 @@ export function EventDetailPage() {
                                   </a>
                                 </>
                               )}
+                              {!testResults.partId && (
+                                (() => {
+                                  const boardEntry = (event.resultsBoard || []).find(
+                                    (e) =>
+                                      e.kind === "unified" &&
+                                      e.refId === test.id &&
+                                      !e.partId
+                                  );
+                                  if (boardEntry) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        disabled={publishingKey === boardEntry.id}
+                                        onClick={() =>
+                                          unpublishEntry(boardEntry.id, boardEntry.title)
+                                        }
+                                      >
+                                        Quitar del tablero
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={publishingKey === `unified:${test.id}`}
+                                      onClick={() =>
+                                        publishUnified(
+                                          test,
+                                          testResults.title || `${test.name} — Resultado unificado`
+                                        )
+                                      }
+                                    >
+                                      Publicar en tablero
+                                    </button>
+                                  );
+                                })()
+                              )}
+                              {testResults.partId && (
+                                (() => {
+                                  const boardEntry = (event.resultsBoard || []).find(
+                                    (e) =>
+                                      e.kind === "unified" &&
+                                      e.refId === test.id &&
+                                      e.partId === testResults.partId
+                                  );
+                                  if (boardEntry) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        disabled={publishingKey === boardEntry.id}
+                                        onClick={() =>
+                                          unpublishEntry(boardEntry.id, boardEntry.title)
+                                        }
+                                      >
+                                        Quitar del tablero
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={
+                                        publishingKey ===
+                                        `part:${test.id}:${testResults.partId}`
+                                      }
+                                      onClick={() =>
+                                        publishUnified(
+                                          test,
+                                          testResults.title ||
+                                            `${test.name} — resultado parcial`,
+                                          testResults.partId
+                                        )
+                                      }
+                                    >
+                                      Publicar en tablero
+                                    </button>
+                                  );
+                                })()
+                              )}
                             </div>
+                            <div className="results-toolbar">
+                              <div className="field results-search-field">
+                                <label>Buscar piloto</label>
+                                <input
+                                  type="search"
+                                  value={resultsSearch}
+                                  onChange={(e) =>
+                                    setResultsSearchByTest((prev) => ({
+                                      ...prev,
+                                      [test.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Nº o nombre…"
+                                  autoComplete="off"
+                                />
+                              </div>
+                              {resultsSearch.trim() && (
+                                <span className="muted results-search-count">
+                                  {filteredResultRows.length} de {testResults.rows.length}
+                                </span>
+                              )}
+                            </div>
+                            {filteredResultRows.length === 0 ? (
+                              <div className="empty empty-sm">
+                                Ningún piloto coincide con «{resultsSearch.trim()}».
+                              </div>
+                            ) : (
                             <div className="table-wrap results-table-wrap">
                               <table className="results-table">
                                 <thead>
@@ -913,10 +1638,13 @@ export function EventDetailPage() {
                                     <th>Pos</th>
                                     <th>N°</th>
                                     <th>Nombre</th>
-                                    <th>Categoría</th>
+                                    {showCategoryCol && <th>Categoría</th>}
                                     <th>Liga</th>
                                     {showLapsCol && <th>Vueltas</th>}
-                                    <th>Tiempo</th>
+                                    {segmentLabels.map((label) => (
+                                      <th key={label}>{label}</th>
+                                    ))}
+                                    <th>{segmentLabels.length > 0 ? "Total" : "Tiempo"}</th>
                                     <th>Salida</th>
                                     <th>Pen. tiempo</th>
                                     <th>Pen. pos</th>
@@ -925,7 +1653,7 @@ export function EventDetailPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {testResults.rows.map((r) => {
+                                  {filteredResultRows.map((r) => {
                                     const pKey = `${test.id}:${r.number}`;
                                     const draft = penaltyDrafts[pKey] || {
                                       timePenalty: "",
@@ -956,7 +1684,7 @@ export function EventDetailPage() {
                                             <span className="badge-warn"> · sin ficha</span>
                                           )}
                                         </td>
-                                        <td>{r.category || "—"}</td>
+                                        {showCategoryCol && <td>{r.category || "—"}</td>}
                                         <td>{r.league || "—"}</td>
                                         {showLapsCol && (
                                           <td>
@@ -974,6 +1702,16 @@ export function EventDetailPage() {
                                             )}
                                           </td>
                                         )}
+                                        {segmentLabels.map((label) => {
+                                          const seg = (r.segments || []).find(
+                                            (s) => `${s.from}→${s.to}` === label
+                                          );
+                                          return (
+                                            <td key={label} className="time">
+                                              {r.incomplete ? "—" : seg?.timeFormatted || "—"}
+                                            </td>
+                                          );
+                                        })}
                                         <td className="time">
                                           {r.incomplete ? (
                                             <span className="badge-incomplete" title={r.statusLabel}>
@@ -982,6 +1720,11 @@ export function EventDetailPage() {
                                           ) : (
                                             <>
                                               {r.timeFormatted}
+                                              {r.statusLabel === "En curso" && (
+                                                <div className="muted" style={{ fontSize: "0.72rem" }}>
+                                                  En curso
+                                                </div>
+                                              )}
                                               {r.timePenaltyMs > 0 && (
                                                 <div className="muted" style={{ fontSize: "0.75rem" }}>
                                                   base {r.rawTimeFormatted}
@@ -1097,6 +1840,7 @@ export function EventDetailPage() {
                                 </tbody>
                               </table>
                             </div>
+                            )}
                             <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
                               Pen. tiempo: formato <code>m:ss.xxx</code> o <code>hh:mm:ss.xxx</code>{" "}
                               (atajos <strong>−5</strong> / <strong>+5</strong>). Pen. pos: posiciones a
@@ -1114,13 +1858,14 @@ export function EventDetailPage() {
             })}
           </div>
         )}
-      </div>
+      </section>
 
       <EventFusionPanel
         eventId={event.id}
         tests={event.tests}
         points={points}
         fusions={event.fusions || []}
+        resultsBoard={event.resultsBoard || []}
         onReload={load}
       />
 

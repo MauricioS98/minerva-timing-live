@@ -50,14 +50,62 @@ function lapsCell(r: ResultRow): string {
   return r.expectedLaps != null ? `${r.laps}/${r.expectedLaps}` : String(r.laps);
 }
 
-function baseHeaders(withLaps: boolean): string[] {
+function timeHeaders(flags: PenaltyFlags): string[] {
+  if (flags.time) return ["Tiempo sin pen.", "Tiempo con pen."];
+  return ["Tiempo"];
+}
+
+function timeCells(r: ResultRow, flags: PenaltyFlags): string[] {
+  if (flags.time) {
+    return [r.rawTimeFormatted || r.timeFormatted, r.timeFormatted];
+  }
+  return [r.timeFormatted];
+}
+
+const TRAYECTO_HEADERS = ["1er trayecto", "2do trayecto", "3er trayecto"];
+
+/** Sector keys in appearance order + display headers (1er / 2do trayecto…). */
+function collectSegmentColumns(rows: ResultRow[]): { key: string; header: string }[] {
+  const seen = new Set<string>();
+  const cols: { key: string; header: string }[] = [];
+  for (const r of rows) {
+    for (const s of r.segments || []) {
+      const key = `${s.from}→${s.to}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        cols.push({
+          key,
+          header: TRAYECTO_HEADERS[cols.length] || key,
+        });
+      }
+    }
+  }
+  return cols;
+}
+
+function segmentTime(r: ResultRow, key: string): string {
+  const seg = (r.segments || []).find((s) => `${s.from}→${s.to}` === key);
+  return seg ? seg.timeFormatted : "—";
+}
+
+function baseHeaders(
+  withLaps: boolean,
+  flags: PenaltyFlags,
+  segmentCols: { key: string; header: string }[]
+): string[] {
   const h = ["Pos", "N°", "Nombre", "Categoría", "Liga"];
   if (withLaps) h.push("Vueltas");
-  h.push("Tiempo", "Salida", "Segmento");
+  for (const c of segmentCols) h.push(c.header);
+  h.push(...timeHeaders(flags), "Salida", "Segmento");
   return h;
 }
 
-function baseCells(r: ResultRow, withLaps: boolean): (string | number)[] {
+function baseCells(
+  r: ResultRow,
+  withLaps: boolean,
+  flags: PenaltyFlags,
+  segmentCols: { key: string; header: string }[]
+): (string | number)[] {
   const cells: (string | number)[] = [
     r.position,
     r.number,
@@ -66,31 +114,27 @@ function baseCells(r: ResultRow, withLaps: boolean): (string | number)[] {
     r.league || "—",
   ];
   if (withLaps) cells.push(lapsCell(r));
-  cells.push(r.timeFormatted, r.partName || "—", r.segmentLabel);
+  for (const c of segmentCols) cells.push(segmentTime(r, c.key));
+  cells.push(...timeCells(r, flags), r.partName || "—", r.segmentLabel);
   return cells;
 }
 
 export function resultsToCsv(rows: ResultRow[], title: string): string {
   const flags = penaltyFlags(rows);
   const withLaps = hasLapResults(rows);
-  const header = [...baseHeaders(withLaps), ...penaltyHeaders(flags)];
-  const lines = [
-    `# ${title}`,
-    header.join(","),
-    ...rows.map((r) => {
-      const base: (string | number)[] = [
-        r.position,
-        esc(r.number),
-        esc(r.name),
-        esc(r.category || ""),
-        esc(r.league || ""),
-      ];
-      if (withLaps) base.push(lapsCell(r));
-      base.push(r.timeFormatted, esc(r.partName || ""), esc(r.segmentLabel));
-      const pens = penaltyCells(r, flags).map((c) => (typeof c === "string" ? esc(c) : c));
-      return [...base, ...pens].join(",");
-    }),
-  ];
+  const segmentCols = collectSegmentColumns(rows);
+  const headers = [...baseHeaders(withLaps, flags, segmentCols), ...penaltyHeaders(flags)];
+  const lines = [`# ${title}`, headers.join(",")];
+  for (const r of rows) {
+    if (r.incomplete) continue;
+    const cells = [
+      ...baseCells(r, withLaps, flags, segmentCols).map((c) =>
+        typeof c === "string" ? esc(c) : c
+      ),
+      ...penaltyCells(r, flags).map((c) => (typeof c === "string" ? esc(c) : c)),
+    ];
+    lines.push(cells.join(","));
+  }
   return lines.join("\n");
 }
 
@@ -101,12 +145,13 @@ export async function resultsToExcel(
 ): Promise<Buffer> {
   const flags = penaltyFlags(rows);
   const withLaps = hasLapResults(rows);
+  const segmentCols = collectSegmentColumns(rows);
   const penHeaders = penaltyHeaders(flags);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "GPMD Cronometraje";
+  wb.creator = "Minerva Timing";
   const ws = wb.addWorksheet("Resultados");
 
-  const headers = [...baseHeaders(withLaps), ...penHeaders];
+  const headers = [...baseHeaders(withLaps, flags, segmentCols), ...penHeaders];
   const colCount = headers.length;
   ws.mergeCells(1, 1, 1, colCount);
   ws.getCell("A1").value = eventName;
@@ -124,9 +169,12 @@ export async function resultsToExcel(
   });
 
   for (const r of rows) {
-    ws.addRow([...baseCells(r, withLaps), ...penaltyCells(r, flags)]);
+    if (r.incomplete) continue;
+    ws.addRow([...baseCells(r, withLaps, flags, segmentCols), ...penaltyCells(r, flags)]);
   }
 
+  const timeWidths = flags.time ? [{ width: 14 }, { width: 14 }] : [{ width: 14 }];
+  const segWidths = segmentCols.map(() => ({ width: 14 }));
   const penWidths = [
     ...(flags.time ? [{ width: 12 }] : []),
     ...(flags.position ? [{ width: 10 }] : []),
@@ -139,9 +187,10 @@ export async function resultsToExcel(
     { width: 22 },
     { width: 16 },
     ...(withLaps ? [{ width: 10 }] : []),
+    ...segWidths,
+    ...timeWidths,
     { width: 14 },
-    { width: 14 },
-    { width: 18 },
+    { width: 22 },
     ...penWidths,
   ];
 
@@ -159,21 +208,50 @@ function findHeaderImage(eventId: string): string | null {
 
 type PdfCol = { label: string; w: number; value: (r: ResultRow) => string };
 
-function buildPdfColumns(flags: PenaltyFlags, pageWidth: number, withLaps: boolean): PdfCol[] {
+function buildPdfColumns(
+  flags: PenaltyFlags,
+  pageWidth: number,
+  withLaps: boolean,
+  segmentCols: { key: string; header: string }[] = []
+): PdfCol[] {
   const cols: PdfCol[] = [
     { label: "Pos", w: 36, value: (r) => String(r.position) },
-    { label: "N°", w: 44, value: (r) => r.number },
-    { label: "Nombre", w: 130, value: (r) => r.name || "—" },
-    { label: "Categoría", w: 90, value: (r) => r.category || "—" },
-    { label: "Liga", w: 68, value: (r) => r.league || "—" },
+    { label: "N°", w: 40, value: (r) => r.number },
+    { label: "Nombre", w: segmentCols.length > 0 ? 110 : 130, value: (r) => r.name || "—" },
+    { label: "Categoría", w: segmentCols.length > 0 ? 72 : 90, value: (r) => r.category || "—" },
+    { label: "Liga", w: 58, value: (r) => r.league || "—" },
   ];
   if (withLaps) {
     cols.push({ label: "Vueltas", w: 48, value: (r) => lapsCell(r) || "—" });
   }
-  cols.push(
-    { label: "Tiempo", w: 64, value: (r) => r.timeFormatted },
-    { label: "Salida", w: 72, value: (r) => r.partName || "—" }
-  );
+  for (const seg of segmentCols) {
+    cols.push({
+      label: seg.header,
+      w: 62,
+      value: (r) => segmentTime(r, seg.key),
+    });
+  }
+  if (flags.time) {
+    cols.push(
+      {
+        label: "Tiempo sin pen.",
+        w: 62,
+        value: (r) => r.rawTimeFormatted || r.timeFormatted,
+      },
+      {
+        label: "Tiempo con pen.",
+        w: 62,
+        value: (r) => r.timeFormatted,
+      }
+    );
+  } else {
+    cols.push({
+      label: segmentCols.length > 0 ? "Total" : "Tiempo",
+      w: 64,
+      value: (r) => r.timeFormatted,
+    });
+  }
+  cols.push({ label: "Salida", w: 64, value: (r) => r.partName || "—" });
 
   if (flags.time) {
     cols.push({
@@ -276,16 +354,18 @@ export async function resultsToPdf(
   const exportRows = rows.filter((r) => !r.incomplete);
   return new Promise((resolve, reject) => {
     const flags = penaltyFlags(exportRows);
+    const segmentCols = collectSegmentColumns(exportRows);
     const hasPenaltyCols = flags.time || flags.position || flags.comment;
+    const useLandscape = hasPenaltyCols || segmentCols.length > 0;
     const FOOTER_H = 40;
 
     const doc = new PDFDocument({
       size: "A4",
-      layout: hasPenaltyCols ? "landscape" : "portrait",
+      layout: useLandscape ? "landscape" : "portrait",
       // Bottom margin reserves footer zone so table text never auto-paginates into empty pages
       margins: { top: 36, bottom: FOOTER_H + 8, left: 36, right: 36 },
       bufferPages: true,
-      info: { Title: title, Author: "GPMD Cronometraje" },
+      info: { Title: title, Author: "Minerva Timing" },
     });
     const chunks: Buffer[] = [];
     doc.on("data", (c) => chunks.push(c));
@@ -354,8 +434,8 @@ export async function resultsToPdf(
     y += 10;
 
     const withLaps = hasLapResults(exportRows);
-    const cols = buildPdfColumns(flags, pageWidth, withLaps);
-    const fontSize = hasPenaltyCols ? 8 : 9;
+    const cols = buildPdfColumns(flags, pageWidth, withLaps, segmentCols);
+    const fontSize = useLandscape ? 8 : 9;
     const tableHeaderH = 18;
 
     const drawTableHeader = (yy: number) => {
@@ -382,7 +462,7 @@ export async function resultsToPdf(
         .lineWidth(0.5)
         .stroke();
       doc.fillColor("#888888").fontSize(8).font("Helvetica");
-      pdfText(doc, event.footerText || "Gran Premio Mobil Delvac · Cronometraje GPMD", left, fy, {
+      pdfText(doc, event.footerText || "Minerva Timing", left, fy, {
         width: pageWidth * 0.7,
         align: "left",
       });
@@ -454,7 +534,7 @@ export async function lapByLapToPdf(
       layout: useLandscape ? "landscape" : "portrait",
       margins: { top: 36, bottom: FOOTER_H + 8, left: 36, right: 36 },
       bufferPages: true,
-      info: { Title: title, Author: "GPMD Cronometraje" },
+      info: { Title: title, Author: "Minerva Timing" },
     });
     const chunks: Buffer[] = [];
     doc.on("data", (c) => chunks.push(c));
@@ -565,7 +645,7 @@ export async function lapByLapToPdf(
         .lineWidth(0.5)
         .stroke();
       doc.fillColor("#888888").fontSize(8).font("Helvetica");
-      pdfText(doc, event.footerText || "Gran Premio Mobil Delvac · Cronometraje GPMD", left, fy, {
+      pdfText(doc, event.footerText || "Minerva Timing", left, fy, {
         width: pageWidth * 0.7,
         align: "left",
       });
@@ -670,7 +750,7 @@ export async function lapByLapWithHoursToPdf(
       layout: "landscape",
       margins: { top: 32, bottom: FOOTER_H + 8, left: 28, right: 28 },
       bufferPages: true,
-      info: { Title: title, Author: "GPMD Cronometraje" },
+      info: { Title: title, Author: "Minerva Timing" },
     });
     const chunks: Buffer[] = [];
     doc.on("data", (c) => chunks.push(c));
@@ -784,7 +864,7 @@ export async function lapByLapWithHoursToPdf(
         .lineWidth(0.5)
         .stroke();
       doc.fillColor("#888888").fontSize(8).font("Helvetica");
-      pdfText(doc, event.footerText || "Gran Premio Mobil Delvac · Cronometraje GPMD", left, fy, {
+      pdfText(doc, event.footerText || "Minerva Timing", left, fy, {
         width: pageWidth * 0.7,
         align: "left",
       });
@@ -912,7 +992,7 @@ export async function fusionToExcel(
 ): Promise<Buffer> {
   const testHeaders = fusionTestHeaders(tests);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "GPMD Cronometraje";
+  wb.creator = "Minerva Timing";
   const ws = wb.addWorksheet("Fusión");
 
   const headers = ["Pos", "N°", "Nombre", "Categoría", "Liga", ...testHeaders, "Total"];
@@ -970,7 +1050,7 @@ export async function fusionToPdf(
       layout: useLandscape ? "landscape" : "portrait",
       margins: { top: 36, bottom: FOOTER_H + 8, left: 36, right: 36 },
       bufferPages: true,
-      info: { Title: title, Author: "GPMD Cronometraje" },
+      info: { Title: title, Author: "Minerva Timing" },
     });
     const chunks: Buffer[] = [];
     doc.on("data", (c) => chunks.push(c));
@@ -1072,7 +1152,7 @@ export async function fusionToPdf(
         .lineWidth(0.5)
         .stroke();
       doc.fillColor("#888888").fontSize(8).font("Helvetica");
-      pdfText(doc, event.footerText || "Gran Premio Mobil Delvac · Cronometraje GPMD", left, fy, {
+      pdfText(doc, event.footerText || "Minerva Timing", left, fy, {
         width: pageWidth * 0.7,
         align: "left",
       });

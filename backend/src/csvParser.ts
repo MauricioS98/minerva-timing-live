@@ -1,6 +1,11 @@
 import type { FlagEvent, FlagType, ParsedCsv, Passage } from "./types.js";
 import { parseTimeToMs } from "./timeUtils.js";
 
+/** How the CSV was produced / how deletions should be detected */
+export type CsvSourceFormat = "orbits4" | "orbits5";
+/** Preference: force a reader or auto-detect from headers */
+export type CsvSourcePreference = "auto" | CsvSourceFormat;
+
 function classifyFlag(nombre: string, numero: string): FlagType | null {
   const n = nombre.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
   const num = numero.trim();
@@ -40,16 +45,161 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
+/**
+ * Some exports wrap each row as a single CSV field:
+ *   `"#,""N°"",""Nombre"",..."`
+ * After one unwrap pass that becomes a normal CSV line:
+ *   `#,\"N°\",\"Nombre\",...`
+ */
+function unwrapCsvLine(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('"') || !trimmed.includes('""')) return trimmed;
+  const once = parseCsvLine(trimmed);
+  if (once.length === 1 && /,(?:"|N|Tm|#)/i.test(once[0])) {
+    return once[0];
+  }
+  return trimmed;
+}
+
+function parseCsvRow(line: string): string[] {
+  return parseCsvLine(unwrapCsvLine(line)).map((h) => h.trim());
+}
+
+function normalizeHeader(h: string): string {
+  return h
+    .replace(/^\uFEFF/, "")
+    .replace(/\uFFFD/g, "") // mojibake from latin1 read as utf8
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
 function findCol(headers: string[], ...names: string[]): number {
-  const normalized = headers.map((h) =>
-    h.replace(/^\uFEFF/, "").trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "")
-  );
+  const normalized = headers.map(normalizeHeader);
+  // Prefer exact header match first (avoids "Nombre" matching "no", etc.)
   for (const name of names) {
-    const target = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-    const idx = normalized.findIndex((h) => h === target || h.includes(target));
+    const target = normalizeHeader(name);
+    const exact = normalized.findIndex((h) => h === target);
+    if (exact >= 0) return exact;
+  }
+  for (const name of names) {
+    const target = normalizeHeader(name);
+    // Only allow includes for longer targets to avoid false positives
+    if (target.length < 4) continue;
+    const idx = normalized.findIndex((h) => h.includes(target));
     if (idx >= 0) return idx;
   }
   return -1;
+}
+
+/** Orbits "N°" column — never the leading "#" row index. */
+function findPilotNumberCol(headers: string[]): number {
+  const byName = findCol(headers, "n°", "nº", "numero", "n");
+  if (byName >= 0) return byName;
+  // Plain "N" / "No" after stripping accents/mojibake (not "Nombre")
+  const normalized = headers.map(normalizeHeader);
+  const idx = normalized.findIndex((h) => h === "n" || h === "no");
+  return idx;
+}
+
+/**
+ * Orbits often exports Windows-1252. If UTF-8 decode produces , re-read as latin1.
+ */
+export function decodeCsvContent(content: string | Buffer): string {
+  if (typeof content === "string") {
+    if (!content.includes("\uFFFD")) return content.replace(/^\uFEFF/, "");
+    // Already a string with replacement chars — best-effort strip for headers
+    return content.replace(/^\uFEFF/, "");
+  }
+  const asUtf8 = content.toString("utf8");
+  if (!asUtf8.includes("\uFFFD")) return asUtf8.replace(/^\uFEFF/, "");
+  return content.toString("latin1").replace(/^\uFEFF/, "");
+}
+
+function normalizePilotKey(n: string): string {
+  return String(n || "")
+    .replace(/^#/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isDeletedBorrado(raw: string): boolean {
+  const v = raw.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  return v === "yes" || v === "si" || v === "true" || v === "1" || v === "y";
+}
+
+/**
+ * Orbits 5 exports include a "Borrado" column; Orbits 4 does not.
+ */
+export function detectCsvSourceFormat(headers: string[]): CsvSourceFormat {
+  return findCol(headers, "borrado") >= 0 ? "orbits5" : "orbits4";
+}
+
+export function resolveCsvSourceFormat(
+  headers: string[],
+  preference: CsvSourcePreference = "auto"
+): CsvSourceFormat {
+  if (preference === "orbits4" || preference === "orbits5") return preference;
+  return detectCsvSourceFormat(headers);
+}
+
+/**
+ * Orbits 4 has no "Borrado" flag. Soft-deleted hits keep the same "Vueltas"
+ * count as the previous valid hit for that pilot (and usually the same
+ * T° Transcurrido). Drop those rows so they never enter timing.
+ */
+export function filterOrbits4DeletedPassages(passages: Passage[]): {
+  passages: Passage[];
+  skipped: number;
+} {
+  const ordered = [...passages].sort(
+    (a, b) => a.tmPasosMs - b.tmPasosMs || a.rowIndex - b.rowIndex
+  );
+  const lastLaps = new Map<string, number>();
+  const lastElapsed = new Map<string, number>();
+  const kept: Passage[] = [];
+  let skipped = 0;
+
+  for (const p of ordered) {
+    const key = normalizePilotKey(p.number);
+    const laps = p.lapsCount;
+    const elapsed = p.elapsedMs;
+
+    if (laps != null) {
+      const prev = lastLaps.get(key);
+      if (prev == null) {
+        lastLaps.set(key, laps);
+        if (elapsed != null) lastElapsed.set(key, elapsed);
+        kept.push(p);
+        continue;
+      }
+      if (laps > prev) {
+        lastLaps.set(key, laps);
+        if (elapsed != null) lastElapsed.set(key, elapsed);
+        kept.push(p);
+        continue;
+      }
+      // Same or lower Vueltas than last accepted hit → deleted in Orbits 4
+      skipped++;
+      continue;
+    }
+
+    // No Vueltas column / empty: fall back to elapsed not advancing
+    if (elapsed != null) {
+      const prevEl = lastElapsed.get(key);
+      if (prevEl != null && elapsed <= prevEl && p.lapTimeMs != null && p.lapTimeMs > 0) {
+        skipped++;
+        continue;
+      }
+      lastElapsed.set(key, elapsed);
+    }
+
+    kept.push(p);
+  }
+
+  kept.sort((a, b) => a.rowIndex - b.rowIndex);
+  return { passages: kept, skipped };
 }
 
 /**
@@ -96,23 +246,29 @@ export function extractRacePassages(passages: Passage[], flags: FlagEvent[]): Pa
   return racePassages;
 }
 
-export function parseTimingCsv(content: string, filename: string): ParsedCsv {
-  const lines = content
-    .replace(/^\uFEFF/, "")
+export function parseTimingCsv(
+  content: string | Buffer,
+  filename: string,
+  preference: CsvSourcePreference = "auto"
+): ParsedCsv {
+  const lines = decodeCsvContent(content)
     .split(/\r?\n/)
     .filter((l) => l.trim().length > 0);
 
   if (lines.length === 0) {
-    return { filename, passages: [], flags: [], racePassages: [] };
+    return {
+      filename,
+      passages: [],
+      flags: [],
+      racePassages: [],
+      sourceFormat: "orbits5",
+      deletedSkipped: 0,
+    };
   }
 
-  const headers = parseCsvLine(lines[0]).map((h) => h.trim());
-  const colNum = findCol(headers, "n°", "nº", "no", "numero", "#");
-  // Prefer exact N° over the leading "#" column
-  const colNumero =
-    headers.findIndex((h) => /^n[°ºo]?$/i.test(h.trim()) || h.trim() === "N°") >= 0
-      ? headers.findIndex((h) => /^n[°ºo]?$/i.test(h.trim()) || h.trim() === "N°")
-      : colNum;
+  const headers = parseCsvRow(lines[0]);
+  const sourceFormat = resolveCsvSourceFormat(headers, preference);
+  const colNumero = findPilotNumberCol(headers);
   const colNombre = findCol(headers, "nombre");
   const colTm = findCol(headers, "tm de pasos", "tm pasos");
   const colLap = findCol(headers, "tiempo de vuelta");
@@ -125,16 +281,18 @@ export function parseTimingCsv(content: string, filename: string): ParsedCsv {
     "tiempo transcurrido",
     "tempo transcurrido"
   );
+  const colBorrado = findCol(headers, "borrado");
 
   if (colNumero < 0 || colTm < 0) {
     throw new Error('El CSV debe contener las columnas "N°" y "Tm de pasos"');
   }
 
-  const passages: Passage[] = [];
+  let passages: Passage[] = [];
   const flags: FlagEvent[] = [];
+  let deletedSkipped = 0;
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
+    const cols = parseCsvRow(lines[i]);
     const numero = (cols[colNumero] ?? "").trim();
     const nombre = colNombre >= 0 ? (cols[colNombre] ?? "").trim() : "";
     const tmRaw = (cols[colTm] ?? "").trim();
@@ -142,8 +300,15 @@ export function parseTimingCsv(content: string, filename: string): ParsedCsv {
     const lapsRaw = colLaps >= 0 ? (cols[colLaps] ?? "").trim() : "";
     const elapsedRaw = colElapsed >= 0 ? (cols[colElapsed] ?? "").trim() : "";
     const clase = colClase >= 0 ? (cols[colClase] ?? "").trim() : "";
+    const borradoRaw = colBorrado >= 0 ? (cols[colBorrado] ?? "").trim() : "";
     const tmMs = parseTimeToMs(tmRaw);
     if (tmMs === null) continue;
+
+    // Orbits 5: soft-deleted hits marked in "Borrado"
+    if (sourceFormat === "orbits5" && colBorrado >= 0 && isDeletedBorrado(borradoRaw)) {
+      deletedSkipped++;
+      continue;
+    }
 
     const flagType = classifyFlag(nombre, numero);
     if (flagType === "manual") continue;
@@ -174,7 +339,13 @@ export function parseTimingCsv(content: string, filename: string): ParsedCsv {
     }
 
     const lapMs = parseTimeToMs(lapRaw);
-    const hasLap = lapRaw !== "" && lapRaw !== "0" && lapRaw !== "0.0" && lapRaw !== "0,0" && lapMs !== null && lapMs > 0;
+    const hasLap =
+      lapRaw !== "" &&
+      lapRaw !== "0" &&
+      lapRaw !== "0.0" &&
+      lapRaw !== "0,0" &&
+      lapMs !== null &&
+      lapMs > 0;
     const lapsCount = lapsRaw !== "" ? Number(lapsRaw) : null;
     const elapsedMs = elapsedRaw ? parseTimeToMs(elapsedRaw) : null;
 
@@ -192,7 +363,21 @@ export function parseTimingCsv(content: string, filename: string): ParsedCsv {
     });
   }
 
+  // Orbits 4: no Borrado column — drop hits where Vueltas did not increase
+  if (sourceFormat === "orbits4") {
+    const filtered = filterOrbits4DeletedPassages(passages);
+    passages = filtered.passages;
+    deletedSkipped += filtered.skipped;
+  }
+
   const racePassages = extractRacePassages(passages, flags);
 
-  return { filename, passages, flags, racePassages };
+  return {
+    filename,
+    passages,
+    flags,
+    racePassages,
+    sourceFormat,
+    deletedSkipped,
+  };
 }

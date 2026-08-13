@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { ConfirmDialog, type ConfirmDialogState } from "../components/ConfirmDialog";
-import type { FusionRow, SavedFusion, Test, TimingPoint } from "../types";
+import type { FusionRow, ResultsBoardEntry, SavedFusion, Test, TimingPoint } from "../types";
 
 interface EventFusionPanelProps {
   eventId: string;
   tests: Test[];
   points: TimingPoint[];
   fusions: SavedFusion[];
+  resultsBoard: ResultsBoardEntry[];
   onReload: () => void | Promise<void>;
 }
 
@@ -85,13 +86,13 @@ function ExportButtons({
   hrefFor: (format: "csv" | "xlsx" | "pdf") => string;
 }) {
   return (
-    <div className="export-row fusion-export-row">
+    <>
       {(["csv", "xlsx", "pdf"] as const).map((fmt) => (
         <a key={fmt} className="btn btn-ghost btn-sm" href={hrefFor(fmt)}>
           {fmt.toUpperCase()}
         </a>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -100,6 +101,7 @@ export function EventFusionPanel({
   tests,
   points,
   fusions,
+  resultsBoard,
   onReload,
 }: EventFusionPanelProps) {
   const [open, setOpen] = useState(false);
@@ -107,6 +109,7 @@ export function EventFusionPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [title, setTitle] = useState("");
@@ -120,6 +123,9 @@ export function EventFusionPanel({
 
   const activeSaved = fusions.find((f) => f.id === activeSavedId) || null;
   const savedCount = fusions.length;
+  const activeBoardEntry =
+    activeSaved &&
+    resultsBoard.find((e) => e.kind === "fusion" && e.refId === activeSaved.id);
 
   useEffect(() => {
     if (!open) return;
@@ -226,6 +232,40 @@ export function EventFusionPanel({
     setTab("saved");
     setError("");
     setMsg("");
+  };
+
+  const publishSavedFusion = async () => {
+    if (!activeSaved) return;
+    setPublishing(true);
+    setError("");
+    try {
+      await api.publishToBoard(eventId, {
+        kind: "fusion",
+        refId: activeSaved.id,
+        title: activeSaved.name,
+      });
+      await onReload();
+      setMsg(`«${activeSaved.name}» publicada en el tablero`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al publicar");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const unpublishSavedFusion = async () => {
+    if (!activeBoardEntry) return;
+    setPublishing(true);
+    setError("");
+    try {
+      await api.unpublishFromBoard(eventId, activeBoardEntry.id);
+      await onReload();
+      setMsg(`«${activeBoardEntry.title}» quitada del tablero`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al despublicar");
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const displayRows = tab === "saved" && activeSaved ? activeSaved.rows : rows;
@@ -395,20 +435,43 @@ export function EventFusionPanel({
                   )}
                 </div>
                 {tab === "saved" && activeSaved ? (
-                  <ExportButtons
-                    hrefFor={(fmt) => api.fusionExportUrl(eventId, activeSaved.id, fmt)}
-                  />
+                  <div className="export-row fusion-export-row">
+                    <ExportButtons
+                      hrefFor={(fmt) => api.fusionExportUrl(eventId, activeSaved.id, fmt)}
+                    />
+                    {activeBoardEntry ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={publishing}
+                        onClick={unpublishSavedFusion}
+                      >
+                        Quitar del tablero
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={publishing}
+                        onClick={publishSavedFusion}
+                      >
+                        Publicar en tablero
+                      </button>
+                    )}
+                  </div>
                 ) : canExportLive ? (
-                  <ExportButtons
-                    hrefFor={(fmt) =>
-                      api.fusionLiveExportUrl(
-                        eventId,
-                        fmt,
-                        liveTestIds,
-                        saveName.trim() || undefined
-                      )
-                    }
-                  />
+                  <div className="export-row fusion-export-row">
+                    <ExportButtons
+                      hrefFor={(fmt) =>
+                        api.fusionLiveExportUrl(
+                          eventId,
+                          fmt,
+                          liveTestIds,
+                          saveName.trim() || undefined
+                        )
+                      }
+                    />
+                  </div>
                 ) : null}
               </div>
 

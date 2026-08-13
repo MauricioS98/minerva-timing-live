@@ -1,5 +1,5 @@
 {
-  "name": "gpmd-backend",
+  "name": "minerva-timing-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,19 +9,22 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
-    
+    "express-async-errors": "^3.1.1",
     "multer": "^1.4.5-lts.1",
     "pdfkit": "^0.15.2",
+    "pg": "^8.22.0",
     "uuid": "^11.0.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
+    "@types/express": "^4.17.21",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.5",
     "@types/pdfkit": "^0.13.8",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
