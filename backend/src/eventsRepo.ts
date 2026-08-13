@@ -56,7 +56,9 @@ function mapEventRow(row: Record<string, unknown>): Omit<
     themeColors: (row.theme_colors as string[] | null) ?? null,
     boardPageSeconds: Number(row.board_page_seconds ?? 10),
     overlayVariant:
-      String(row.overlay_variant || "classic") === "redbull" ? "redbull" : "classic",
+      row.overlay_variant === "redbull" || row.overlay_variant === "ponymalta"
+        ? (row.overlay_variant as "redbull" | "ponymalta")
+        : "classic",
     overlayTiming:
       String(row.overlay_timing || "splits") === "total" ? "total" : "splits",
     csvSource:

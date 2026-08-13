@@ -9,6 +9,6 @@ ALTER TABLE events
 
 ALTER TABLE events
   ADD CONSTRAINT events_overlay_variant_check
-  CHECK (overlay_variant IN ('classic', 'redbull'));
+  CHECK (overlay_variant IN ('classic', 'redbull', 'ponymalta'));
 
 COMMIT;

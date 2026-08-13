@@ -157,7 +157,7 @@ export const api = {
       event: {
         id: string;
         name: string;
-        overlayVariant?: "classic" | "redbull";
+        overlayVariant?: "classic" | "redbull" | "ponymalta";
         boardPageSeconds?: number;
         publishedStartOrder?: { testId: string; partId: string } | null;
       };
@@ -287,7 +287,7 @@ export const api = {
         headerImage: string | null;
         footerText: string;
         boardPageSeconds?: number;
-        overlayVariant?: "classic" | "redbull";
+        overlayVariant?: "classic" | "redbull" | "ponymalta";
         overlayTiming?: "splits" | "total";
         csvSource?: "auto" | "orbits4" | "orbits5";
       };
@@ -299,6 +299,7 @@ export const api = {
         rows: ResultRow[] | FusionRow[];
         warning: string | null;
         tests: { id: string; name: string; segmentLabel: string }[] | null;
+        lapScoring?: boolean;
       }[];
     }>(`/events/${eventId}/board`),
 

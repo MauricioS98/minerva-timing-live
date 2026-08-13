@@ -112,8 +112,9 @@ function emptyEvent(body: Partial<Event> & { password?: string }): Event {
   };
 }
 
-function sanitizeOverlayVariant(value: unknown): "classic" | "redbull" {
-  return value === "redbull" ? "redbull" : "classic";
+function sanitizeOverlayVariant(value: unknown): "classic" | "redbull" | "ponymalta" {
+  if (value === "redbull" || value === "ponymalta") return value;
+  return "classic";
 }
 
 function sanitizeOverlayTiming(value: unknown): "splits" | "total" {
@@ -183,8 +184,8 @@ router.put("/events/:id", async (req, res) => {
     overlayVariant:
       req.body.overlayVariant !== undefined
         ? sanitizeOverlayVariant(req.body.overlayVariant)
-        : existing.overlayVariant === "redbull"
-          ? "redbull"
+        : existing.overlayVariant === "redbull" || existing.overlayVariant === "ponymalta"
+          ? existing.overlayVariant
           : "classic",
     overlayTiming:
       req.body.overlayTiming !== undefined
@@ -418,7 +419,10 @@ router.get("/events/:id/orden-salida", async (req, res) => {
     event: {
       id: event.id,
       name: event.name,
-      overlayVariant: event.overlayVariant === "redbull" ? "redbull" : "classic",
+      overlayVariant:
+        event.overlayVariant === "redbull" || event.overlayVariant === "ponymalta"
+          ? event.overlayVariant
+          : "classic",
       boardPageSeconds: event.boardPageSeconds ?? 10,
       publishedStartOrder: event.publishedStartOrder ?? null,
     },
@@ -752,7 +756,14 @@ type BoardSection = {
   rows: ReturnType<typeof computeTestResults>["rows"] | FusionRow[];
   warning: string | null;
   tests: FusionTestMeta[] | null;
+  /** True when this section is classified by laps then total time (not last lap). */
+  lapScoring: boolean;
 };
+
+function sectionLapScoring(test: Test, part?: TestPart | null): boolean {
+  if (part) return isLapScoringPart(part);
+  return test.parts.some((p) => isLapScoringPart(p));
+}
 
 function buildBoardSections(event: Event): BoardSection[] {
   const board = [...(event.resultsBoard || [])].sort((a, b) => a.order - b.order);
@@ -774,6 +785,7 @@ function buildBoardSections(event: Event): BoardSection[] {
           rows: rows.filter((r) => !r.incomplete),
           warning: warning || null,
           tests: null,
+          lapScoring: sectionLapScoring(test, part),
         });
       } else {
         const { rows, warning } = computeTestResults(event, test, fromId, toId);
@@ -784,6 +796,7 @@ function buildBoardSections(event: Event): BoardSection[] {
           rows: rows.filter((r) => !r.incomplete),
           warning: warning || null,
           tests: null,
+          lapScoring: sectionLapScoring(test),
         });
       }
     } else if (entry.kind === "fusion") {
@@ -796,6 +809,7 @@ function buildBoardSections(event: Event): BoardSection[] {
         rows: fusion.rows,
         warning: fusion.warning || null,
         tests: fusion.tests,
+        lapScoring: false,
       });
     }
   }
@@ -812,7 +826,10 @@ function boardEventMeta(event: Event) {
     footerText: event.footerText,
     themeColors: event.themeColors ?? null,
     boardPageSeconds: event.boardPageSeconds ?? 10,
-    overlayVariant: event.overlayVariant === "redbull" ? "redbull" : "classic",
+    overlayVariant:
+      event.overlayVariant === "redbull" || event.overlayVariant === "ponymalta"
+        ? event.overlayVariant
+        : "classic",
     overlayTiming: event.overlayTiming === "total" ? "total" : "splits",
   };
 }

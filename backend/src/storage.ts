@@ -61,7 +61,9 @@ function normalizeLoaded(event: Event): Event {
     );
   }
   event.overlayVariant =
-    event.overlayVariant === "redbull" ? "redbull" : "classic";
+    event.overlayVariant === "redbull" || event.overlayVariant === "ponymalta"
+      ? event.overlayVariant
+      : "classic";
   event.overlayTiming =
     event.overlayTiming === "total" ? "total" : "splits";
   event.csvSource =

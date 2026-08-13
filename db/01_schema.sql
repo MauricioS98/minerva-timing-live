@@ -28,7 +28,7 @@ CREATE TABLE events (
   board_page_seconds  INTEGER NOT NULL DEFAULT 10
                         CHECK (board_page_seconds BETWEEN 3 AND 120),
   overlay_variant     TEXT NOT NULL DEFAULT 'classic'
-                        CHECK (overlay_variant IN ('classic', 'redbull')),
+                        CHECK (overlay_variant IN ('classic', 'redbull', 'ponymalta')),
   overlay_timing      TEXT NOT NULL DEFAULT 'splits'
                         CHECK (overlay_timing IN ('splits', 'total')),
   csv_source          TEXT NOT NULL DEFAULT 'auto'

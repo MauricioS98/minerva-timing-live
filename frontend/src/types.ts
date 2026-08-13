@@ -161,8 +161,8 @@ export interface Event {
   resultsBoard?: ResultsBoardEntry[];
   /** Segundos entre cambios de página en el tablero público (10 pilotos/página) */
   boardPageSeconds?: number;
-  /** Overlay de transmisión: torre Minerva o paquete gráfico RedBull */
-  overlayVariant?: "classic" | "redbull";
+  /** Overlay de transmisión: torre Minerva, paquete RedBull o Circuito Pony Malta */
+  overlayVariant?: "classic" | "redbull" | "ponymalta";
   /** Overlay: 3 times (trayectos + total) or total only */
   overlayTiming?: "splits" | "total";
   /**
@@ -203,4 +203,7 @@ export interface ResultRow {
   expectedLaps?: number | null;
   lapsIncomplete?: boolean;
   segments?: ResultSegment[];
+  /** Last CSV "Tiempo de vuelta" for this pilot */
+  lastLapMs?: number;
+  lastLapFormatted?: string;
 }

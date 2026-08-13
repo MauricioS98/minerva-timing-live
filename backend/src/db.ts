@@ -135,4 +135,18 @@ export async function ensureDbSchema(): Promise<void> {
     await pool.query(fs.readFileSync(migPath, "utf8"));
     console.log("Migración csv_source aplicada");
   }
+
+  const variantCheck = await pool.query<{ def: string }>(
+    `SELECT pg_get_constraintdef(c.oid) AS def
+     FROM pg_constraint c
+     JOIN pg_class t ON c.conrelid = t.oid
+     JOIN pg_namespace n ON t.relnamespace = n.oid
+     WHERE n.nspname = 'public' AND t.relname = 'events'
+       AND c.conname = 'events_overlay_variant_check'`
+  );
+  if (!variantCheck.rows[0]?.def?.includes("ponymalta")) {
+    const migPath = path.resolve(__dirname, "../../db/08_overlay_variant_ponymalta.sql");
+    await pool.query(fs.readFileSync(migPath, "utf8"));
+    console.log("Migración overlay_variant ponymalta aplicada");
+  }
 }

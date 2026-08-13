@@ -4,6 +4,7 @@ import { api } from "../api";
 import { hexToRgba, resolveThemeColors } from "../theme";
 import { ClassicOverlay } from "../overlays/ClassicOverlay";
 import { RedBullOverlay } from "../overlays/redbull/RedBullOverlay";
+import { PonyMaltaOverlay } from "../overlays/ponymalta/PonyMaltaOverlay";
 
 type BoardData = Awaited<ReturnType<typeof api.getBoard>>;
 type Section = BoardData["sections"][number];
@@ -76,10 +77,13 @@ export function OverlayPage() {
   } as CSSProperties;
 
   const variant =
-    variantParam === "redbull" || variantParam === "classic"
+    variantParam === "redbull" ||
+    variantParam === "classic" ||
+    variantParam === "ponymalta"
       ? variantParam
-      : data?.event.overlayVariant === "redbull"
-        ? "redbull"
+      : data?.event.overlayVariant === "redbull" ||
+          data?.event.overlayVariant === "ponymalta"
+        ? data.event.overlayVariant
         : "classic";
 
   const showSplits =
@@ -91,6 +95,19 @@ export function OverlayPage() {
     120,
     Math.max(3, Math.round(data?.event.boardPageSeconds ?? 10))
   );
+
+  if (variant === "ponymalta") {
+    return (
+      <PonyMaltaOverlay
+        error={error}
+        section={section}
+        showHeader={showHeader}
+        showSplits={showSplits}
+        pageHoldSeconds={pageHoldSeconds}
+        top={Math.max(1, Number.isFinite(topParam) && topParam > 0 ? topParam : 40)}
+      />
+    );
+  }
 
   if (variant === "redbull") {
     return (

@@ -381,8 +381,9 @@ export function PublicBoardPage() {
             <code>{`${origin}/overlay/${event.id}`}</code>
           </div>
           <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
-            La variante (classic / RedBull) se elige en el panel del evento. Forzar en la URL:{" "}
-            <code>?variant=redbull</code> o <code>?variant=classic</code>.
+            La variante (classic / RedBull / Pony Malta) se elige en el panel del evento. Forzar en la URL:{" "}
+            <code>?variant=redbull</code>, <code>?variant=classic</code> o{" "}
+            <code>?variant=ponymalta</code>.
           </p>
           <div className="broadcast-url-row">
             <strong>Feed JSON (vivo)</strong>
@@ -413,7 +414,7 @@ export function PublicBoardPage() {
             por defecto la última publicada), <code>top=40</code> (filas; RedBull pagina de 10),{" "}
             <code>refresh=5</code> (segundos), <code>gap=0</code> (ocultar la diferencia con
             el líder), <code>header=0</code> (ocultar título) y{" "}
-            <code>variant=redbull|classic</code>. En los feeds,{" "}
+            <code>variant=redbull|classic|ponymalta</code>. En los feeds,{" "}
             <code>?section=2</code> filtra una sección; <code>?live=1</code> o{" "}
             <code>?refresh=5</code> fuerza la vista viva; <code>?raw=1</code> fuerza JSON/CSV/XML
             puro. El tablero público se actualiza solo cada 5s y pagina de 10 en 10 cada{" "}

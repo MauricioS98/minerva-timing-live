@@ -255,7 +255,12 @@ export function EventDetailPage() {
         120,
         Math.max(3, Math.round(Number(fd.get("boardPageSeconds")) || 10))
       ),
-      overlayVariant: fd.get("overlayVariant") === "redbull" ? "redbull" : "classic",
+      overlayVariant:
+        fd.get("overlayVariant") === "redbull"
+          ? "redbull"
+          : fd.get("overlayVariant") === "ponymalta"
+            ? "ponymalta"
+            : "classic",
       overlayTiming: fd.get("overlayTiming") === "total" ? "total" : "splits",
       csvSource:
         fd.get("csvSource") === "orbits4" || fd.get("csvSource") === "orbits5"
@@ -620,8 +625,8 @@ export function EventDetailPage() {
               defaultValue={event.boardPageSeconds ?? 10}
             />
             <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
-              Tablero: 10 pilotos por página. Overlay RedBull: tiempo que permanece la página completa
-              tras aparecer todos los pilotos (cada piloto entra con ~1 s de separación).
+              Tablero: 10 pilotos por página. Overlays RedBull y Pony Malta: tiempo que permanece
+              la página completa tras aparecer todos los pilotos.
             </p>
           </div>
           <fieldset
@@ -638,7 +643,10 @@ export function EventDetailPage() {
                   type="radio"
                   name="overlayVariant"
                   value="classic"
-                  defaultChecked={event.overlayVariant !== "redbull"}
+                  defaultChecked={
+                    event.overlayVariant !== "redbull" &&
+                    event.overlayVariant !== "ponymalta"
+                  }
                 />
                 <span>
                   <strong>Overlay actual</strong>
@@ -655,6 +663,18 @@ export function EventDetailPage() {
                 <span>
                   <strong>Overlay RedBull</strong>
                   <small>Pieza gráfica + animación de filas</small>
+                </span>
+              </label>
+              <label className="overlay-variant-option">
+                <input
+                  type="radio"
+                  name="overlayVariant"
+                  value="ponymalta"
+                  defaultChecked={event.overlayVariant === "ponymalta"}
+                />
+                <span>
+                  <strong>Overlay Pony Malta</strong>
+                  <small>Circuito Pony Malta · tabla angular top-left</small>
                 </span>
               </label>
             </div>

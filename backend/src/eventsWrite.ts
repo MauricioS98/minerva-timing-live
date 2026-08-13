@@ -265,7 +265,9 @@ export async function persistEvent(event: Event): Promise<Event> {
         event.password,
         theme,
         Math.min(120, Math.max(3, Math.round(event.boardPageSeconds ?? 10))),
-        event.overlayVariant === "redbull" ? "redbull" : "classic",
+        event.overlayVariant === "redbull" || event.overlayVariant === "ponymalta"
+          ? event.overlayVariant
+          : "classic",
         event.overlayTiming === "total" ? "total" : "splits",
         event.csvSource === "orbits4" || event.csvSource === "orbits5"
           ? event.csvSource

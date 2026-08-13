@@ -3,6 +3,7 @@ import { formatMs } from "./timeUtils.js";
 import type {
   Event,
   ParsedCsv,
+  Passage,
   Pilot,
   PilotPenalty,
   ResultRow,
@@ -202,13 +203,34 @@ function lapResultsByPilot(parsed: ParsedCsv): Map<string, LapPilotResult> {
       .filter((n): n is number => n != null && n > 0);
     const laps = lapCounts.length > 0 ? Math.max(...lapCounts) : completed.length;
 
-    const last = completed[completed.length - 1];
-    let totalTimeMs = last.elapsedMs ?? 0;
+    const latest = (list: typeof completed) =>
+      list.reduce((best, p) =>
+        !best ||
+        p.tmPasosMs > best.tmPasosMs ||
+        (p.tmPasosMs === best.tmPasosMs && p.rowIndex > best.rowIndex)
+          ? p
+          : best
+      );
+    const earliest = (list: typeof completed) =>
+      list.reduce((best, p) =>
+        !best ||
+        p.tmPasosMs < best.tmPasosMs ||
+        (p.tmPasosMs === best.tmPasosMs && p.rowIndex < best.rowIndex)
+          ? p
+          : best
+      );
+
+    const last = latest(completed);
+    const atMaxLaps = completed.filter((p) => (p.lapsCount ?? 0) === laps);
+    const lastAtMax = atMaxLaps.length > 0 ? latest(atMaxLaps) : last;
+
+    // Total race time: elapsed clock, never the last lap alone.
+    let totalTimeMs = lastAtMax.elapsedMs ?? 0;
     if (totalTimeMs <= 0 && completed.length >= 2) {
-      totalTimeMs = completed[completed.length - 1].tmPasosMs - completed[0].tmPasosMs;
+      totalTimeMs = last.tmPasosMs - earliest(completed).tmPasosMs;
     }
-    if (totalTimeMs <= 0 && last.lapTimeMs) {
-      totalTimeMs = last.lapTimeMs;
+    if (totalTimeMs <= 0) {
+      totalTimeMs = completed.reduce((sum, p) => sum + (p.lapTimeMs || 0), 0);
     }
 
     result.set(key, {
@@ -243,16 +265,26 @@ function enrichLap(
     laps,
     expectedLaps: expected,
     lapsIncomplete: expected != null && laps < expected,
+    lastLapMs: row.lastLapMs,
+    lastLapFormatted: row.lastLapFormatted,
   };
 }
 
+/** More laps first; equal laps → shorter total time. Never last-lap time. */
+function compareLapStandings(
+  a: { laps?: number; timeMs?: number; rawTimeMs?: number },
+  b: { laps?: number; timeMs?: number; rawTimeMs?: number }
+): number {
+  const lapsA = a.laps ?? 0;
+  const lapsB = b.laps ?? 0;
+  if (lapsB !== lapsA) return lapsB - lapsA;
+  const timeA = a.timeMs ?? a.rawTimeMs ?? 0;
+  const timeB = b.timeMs ?? b.rawTimeMs ?? 0;
+  return timeA - timeB;
+}
+
 function rankLapRaw(rows: ResultRow[]): ResultRow[] {
-  const sorted = [...rows].sort((a, b) => {
-    const lapsA = a.laps ?? 0;
-    const lapsB = b.laps ?? 0;
-    if (lapsB !== lapsA) return lapsB - lapsA;
-    return a.rawTimeMs - b.rawTimeMs;
-  });
+  const sorted = [...rows].sort((a, b) => compareLapStandings(a, b));
   return sorted.map((r, i) => ({ ...r, position: i + 1 }));
 }
 
@@ -369,10 +401,7 @@ export function computeLapByLapResults(
 }
 
 function compareLapResultRows(a: ResultRow, b: ResultRow): number {
-  const lapsA = a.laps ?? 0;
-  const lapsB = b.laps ?? 0;
-  if (lapsB !== lapsA) return lapsB - lapsA;
-  return a.rawTimeMs - b.rawTimeMs;
+  return compareLapStandings(a, b);
 }
 
 /**
@@ -396,6 +425,62 @@ function findPenalty(
   };
 }
 
+function lastValidPassageFromPart(
+  part: TestPart | undefined,
+  number: string
+): Passage | null {
+  if (!part) return null;
+  const key = normalizeNumber(number);
+  let best: Passage | null = null;
+  for (const slot of part.csvs || []) {
+    for (const p of slot.parsed?.racePassages || []) {
+      if (normalizeNumber(p.number) !== key) continue;
+      if (
+        !best ||
+        p.tmPasosMs > best.tmPasosMs ||
+        (p.tmPasosMs === best.tmPasosMs && p.rowIndex > best.rowIndex)
+      ) {
+        best = p;
+      }
+    }
+  }
+  return best;
+}
+
+function lastLapFromPart(
+  part: TestPart | undefined,
+  number: string
+): { lastLapMs: number; lastLapFormatted: string; laps: number | null } | null {
+  const lastValid = lastValidPassageFromPart(part, number);
+  if (!lastValid) return null;
+
+  let lastWithLap: Passage | null = null;
+  const key = normalizeNumber(number);
+  for (const slot of part?.csvs || []) {
+    for (const p of slot.parsed?.racePassages || []) {
+      if (normalizeNumber(p.number) !== key) continue;
+      if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
+      if (
+        !lastWithLap ||
+        p.tmPasosMs > lastWithLap.tmPasosMs ||
+        (p.tmPasosMs === lastWithLap.tmPasosMs && p.rowIndex > lastWithLap.rowIndex)
+      ) {
+        lastWithLap = p;
+      }
+    }
+  }
+
+  const laps = lastValid.lapsCount;
+  if (!lastWithLap || lastWithLap.lapTimeMs == null) {
+    return laps != null ? { lastLapMs: 0, lastLapFormatted: "", laps } : null;
+  }
+  return {
+    lastLapMs: lastWithLap.lapTimeMs,
+    lastLapFormatted: formatMs(lastWithLap.lapTimeMs),
+    laps: laps ?? lastWithLap.lapsCount ?? null,
+  };
+}
+
 function enrich(
   pilots: Pilot[],
   number: string,
@@ -406,6 +491,7 @@ function enrich(
   segments?: ResultSegment[]
 ): ResultRow {
   const pilot = pilots.find((p) => normalizeNumber(p.number) === normalizeNumber(number));
+  const lastLap = lastLapFromPart(part, number);
   return {
     position: 0,
     number,
@@ -426,6 +512,9 @@ function enrich(
     segmentLabel,
     incomplete: false,
     segments: segments && segments.length > 0 ? segments : undefined,
+    lastLapMs: lastLap?.lastLapMs || undefined,
+    lastLapFormatted: lastLap?.lastLapFormatted || undefined,
+    laps: lastLap?.laps != null ? lastLap.laps : undefined,
   };
 }
 
@@ -521,7 +610,8 @@ function mergeCompleteAndIncomplete(
 export function applyPenalties(
   rows: ResultRow[],
   penalties: PilotPenalty[] | undefined,
-  _scope?: string
+  _scope?: string,
+  lapMode = false
 ): ResultRow[] {
   const withTime = rows.map((r) => {
     const pen = findPenalty(penalties, r.number);
@@ -541,16 +631,9 @@ export function applyPenalties(
     };
   });
 
-  const lapMode = withTime.some((r) => r.laps != null && r.laps > 0);
-
-  const byScore = [...withTime].sort((a, b) => {
-    if (lapMode) {
-      const lapsA = a.laps ?? 0;
-      const lapsB = b.laps ?? 0;
-      if (lapsB !== lapsA) return lapsB - lapsA;
-    }
-    return a.timeMs - b.timeMs;
-  });
+  const byScore = [...withTime].sort((a, b) =>
+    lapMode ? compareLapStandings(a, b) : a.timeMs - b.timeMs
+  );
 
   const provisional = byScore.map((r, i) => ({
     ...r,
@@ -671,7 +754,7 @@ export function computePartResults(
           scope,
         };
       }
-      return { rows: applyPenalties(rankLapRaw(rows), test.penalties, scope), scope };
+      return { rows: applyPenalties(rankLapRaw(rows), test.penalties, scope, true), scope };
     }
 
     const byPilot = combinedStartFinishByPilot(slot.parsed);
@@ -1159,11 +1242,12 @@ export function computeTestResults(
   }
 
   const values = [...best.values()];
-  const useLapRank = values.some((r) => r.laps != null && r.laps > 0);
+  const useLapRank = test.parts.some((p) => isLapScoring(p));
   const rows = applyPenalties(
     useLapRank ? rankLapRaw(values) : rankRaw(values),
     test.penalties,
-    scope
+    scope,
+    useLapRank
   );
   if (rows.length === 0) {
     return {

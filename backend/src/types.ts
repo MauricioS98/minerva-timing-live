@@ -216,8 +216,8 @@ export interface Event {
    * Default 10. Overlay is unaffected.
    */
   boardPageSeconds?: number;
-  /** Broadcast overlay style: classic Minerva tower or RedBull graphic pack */
-  overlayVariant?: "classic" | "redbull";
+  /** Broadcast overlay style: classic Minerva tower, RedBull, or Pony Malta */
+  overlayVariant?: "classic" | "redbull" | "ponymalta";
   /** Overlay times: sector traps + total, or total only */
   overlayTiming?: "splits" | "total";
   /**
@@ -267,4 +267,7 @@ export interface ResultRow {
    * (e.g. A→B, B→A). Ranking still uses timeMs (= total).
    */
   segments?: ResultSegment[];
+  /** Last completed lap time from CSV "Tiempo de vuelta" */
+  lastLapMs?: number;
+  lastLapFormatted?: string;
 }
