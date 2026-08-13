@@ -55,7 +55,7 @@ if (fs.existsSync(FRONTEND_DIR)) {
     return res.sendFile(path.join(FRONTEND_DIR, "index.html"));
   });
 }
-
+ 
 app.use(
   (
     err: unknown,
