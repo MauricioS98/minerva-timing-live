@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "npm run build:production",
+    "build:local": "tsc -b && vite build --mode development",
+    "build:production": "tsc -b && vite build --mode production",
+    "preview": "vite preview",
+    "preview:local": "vite preview --mode development"
   },
   "dependencies": {
     "react": "^18.3.1",

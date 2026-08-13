@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, formatPenaltyInput } from "../api";
+import { api, API_BASE, UPLOADS_BASE, absoluteApiUrl, formatPenaltyInput } from "../api";
 import { resolveThemeColors } from "../theme";
 import type { FusionRow, ResultRow } from "../types";
 import type { CSSProperties } from "react";
@@ -98,8 +98,8 @@ function BoardSectionBlock({
                 className="board-export-btn"
                 href={
                   section.kind === "fusion"
-                    ? `/api/events/${eventId}/fusions/${section.entry.refId}/export/${fmt}`
-                    : `/api/events/${eventId}/tests/${section.entry.refId}/export/${fmt}`
+                    ? `${API_BASE}/events/${eventId}/fusions/${section.entry.refId}/export/${fmt}`
+                    : `${API_BASE}/events/${eventId}/tests/${section.entry.refId}/export/${fmt}`
                 }
               >
                 {fmt === "xlsx" ? "Excel" : fmt.toUpperCase()}
@@ -322,7 +322,9 @@ export function PublicBoardPage() {
   }
 
   const { event, sections } = data;
-  const headerUrl = event.headerImage ? `/uploads/headers/${event.headerImage}` : null;
+  const headerUrl = event.headerImage
+    ? `${UPLOADS_BASE}/headers/${event.headerImage}`
+    : null;
   const origin = window.location.origin;
   const [cAccent, cAccent2] = resolveThemeColors(event.themeColors);
   const boardTheme = {
@@ -384,27 +386,27 @@ export function PublicBoardPage() {
           </p>
           <div className="broadcast-url-row">
             <strong>Feed JSON (vivo)</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.json?live=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.json?live=1`)}</code>
           </div>
           <div className="broadcast-url-row">
             <strong>Feed CSV (vivo)</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.csv?live=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.csv?live=1`)}</code>
           </div>
           <div className="broadcast-url-row">
             <strong>Feed XML (vivo)</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.xml?live=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.xml?live=1`)}</code>
           </div>
           <div className="broadcast-url-row">
             <strong>JSON crudo (vMix)</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.json?raw=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.json?raw=1`)}</code>
           </div>
           <div className="broadcast-url-row">
             <strong>CSV crudo</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.csv?raw=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.csv?raw=1`)}</code>
           </div>
           <div className="broadcast-url-row">
             <strong>XML crudo</strong>
-            <code>{`${origin}/api/events/${event.id}/board/feed.xml?raw=1`}</code>
+            <code>{absoluteApiUrl(`/events/${event.id}/board/feed.xml?raw=1`)}</code>
           </div>
           <p>
             Parámetros del overlay: <code>?section=2</code> (sección por número o id;

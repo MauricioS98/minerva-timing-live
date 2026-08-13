@@ -21,10 +21,20 @@ npm run dev
 - App: http://localhost:5173  
 - Proxy/API esperada: http://localhost:4000  
 
+## Entornos
+
+| Archivo | Cuándo |
+|---------|--------|
+| `.env.development` | `npm run dev` y `npm run build:local` |
+| `.env.production` | `npm run build` / `npm run build:production` |
+
+Variables: `VITE_API_BASE_URL`, `VITE_UPLOADS_BASE_URL`, `VITE_BACKEND_ORIGIN`.
+
 ## Build
 
 ```bash
-npm run build --prefix frontend
+npm run build:local --prefix frontend       # local
+npm run build:production --prefix frontend  # nube
 npm run preview --prefix frontend
 ```
 

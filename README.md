@@ -23,6 +23,23 @@ npm run dev
 | Frontend  | http://localhost:5173 |
 | API       | http://localhost:4000 |
 
+### Frontend: entornos y builds
+
+Variables en `frontend/.env.development` (local) y `frontend/.env.production` (nube):
+
+| Variable | Uso |
+|----------|-----|
+| `VITE_API_BASE_URL` | Ruta base del backend (`/api` o URL absoluta) |
+| `VITE_UPLOADS_BASE_URL` | Cabeceras / archivos subidos |
+| `VITE_BACKEND_ORIGIN` | Origen absoluto del API (feeds) |
+
+```bash
+npm run build:local        # usa .env.development
+npm run build:production   # usa .env.production (también `npm run build`)
+```
+
+Antes de desplegar, edita `frontend/.env.production` con la URL real de tu backend.
+
 `GET /api/health` debe responder con `"database": "minerva_timing_live"`.
 
 La API escucha en todas las interfaces (`0.0.0.0`) para uso en LAN.

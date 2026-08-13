@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, formatOffsetInput, formatPenaltyInput, parseOffsetToMs } from "../api";
+import { api, UPLOADS_BASE, formatOffsetInput, formatPenaltyInput, parseOffsetToMs } from "../api";
 import { ConfirmDialog, type ConfirmDialogState } from "../components/ConfirmDialog";
 import { canDeletePart, canDeleteTest } from "../lib/deleteGuards";
 import { isEventUnlocked, markEventUnlocked } from "../lib/eventAuth";
@@ -800,7 +800,7 @@ export function EventDetailPage() {
               <div className="header-preview-wrap">
                 <img
                   className="header-preview"
-                  src={`/uploads/headers/${event.headerImage}?t=${event.updatedAt}`}
+                  src={`${UPLOADS_BASE}/headers/${event.headerImage}?t=${event.updatedAt}`}
                   alt="Cabecera"
                 />
               </div>

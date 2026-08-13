@@ -1,0 +1,45 @@
+name: Deploy Vite to Hostinger
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: cd frontend && npm install
+
+      - name: Build Vite
+        run: cd frontend && npm run build
+
+      - name: Copy .htaccess to dist
+        run: cp frontend/deploy/.htaccess frontend/dist/.htaccess
+
+      - name: Debug secrets
+        run: |
+          echo "Host: ${{ secrets.FTP_HOST }}"
+          echo "User: ${{ secrets.FTP_USER }}"
+
+      - name: Upload to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
+          local-dir: frontend/dist/
+          server-dir: ${{ secrets.FTP_PATH }}/
+          dangerous-clean-slate: true

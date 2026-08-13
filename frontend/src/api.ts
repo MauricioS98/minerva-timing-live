@@ -1,6 +1,49 @@
 import type { Event, FusionRow, Pilot, ResultRow, ResultsBoardEntry, SavedFusion } from "./types";
 
-const BASE = "/api";
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+/** Base de la API (`/api` en local; URL absoluta en producción). */
+export const API_BASE = trimTrailingSlash(
+  import.meta.env.VITE_API_BASE_URL || "/api"
+);
+
+/** Base de uploads (`/uploads` en local; URL absoluta en producción). */
+export const UPLOADS_BASE = trimTrailingSlash(
+  import.meta.env.VITE_UPLOADS_BASE_URL || "/uploads"
+);
+
+/**
+ * Origen del backend para enlaces absolutos (feeds, etc.).
+ * En local suele ser http://localhost:4000; en nube, la URL del servicio API.
+ */
+export const BACKEND_ORIGIN = trimTrailingSlash(
+  import.meta.env.VITE_BACKEND_ORIGIN ||
+    (API_BASE.startsWith("http")
+      ? (() => {
+          try {
+            return new URL(API_BASE).origin;
+          } catch {
+            return "";
+          }
+        })()
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : "")
+);
+
+const BASE = API_BASE;
+
+/** Absolute API URL for links shown to the user (feeds, exports opened in a new tab). */
+export function absoluteApiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (API_BASE.startsWith("http")) return `${API_BASE}${p}`;
+  const origin =
+    BACKEND_ORIGIN ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return `${origin}${API_BASE}${p}`;
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, options);
