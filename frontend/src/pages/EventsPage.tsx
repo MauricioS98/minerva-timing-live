@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { ConfirmDialog, type ConfirmDialogState } from "../components/ConfirmDialog";
 import { canDeleteEvent } from "../lib/deleteGuards";
+import { markEventUnlocked } from "../lib/eventAuth";
 import type { Event } from "../types";
 
 export function EventsPage() {
@@ -11,6 +12,8 @@ export function EventsPage() {
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [location, setLocation] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [dialog, setDialog] = useState<ConfirmDialogState | null>(null);
@@ -31,13 +34,29 @@ export function EventsPage() {
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    const pw = password.trim();
+    if (!pw) {
+      setError("La contraseña del evento es obligatoria");
+      return;
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(pw)) {
+      setError("La contraseña solo puede contener letras y números");
+      return;
+    }
+    if (pw !== password2.trim()) {
+      setError("Las contraseñas no coinciden");
+      return;
+    }
     setCreating(true);
     setError("");
     try {
-      const ev = await api.createEvent({ name, date, location });
+      const ev = await api.createEvent({ name, date, location, password: pw });
       setName("");
       setDate("");
       setLocation("");
+      setPassword("");
+      setPassword2("");
+      markEventUnlocked(ev.id);
       navigate(`/eventos/${ev.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -80,7 +99,7 @@ export function EventsPage() {
       <div className="page-head">
         <div>
           <h1>Eventos</h1>
-          <p>Crea el evento del Gran Premio y gestiona sus pruebas de cronometraje.</p>
+          <p>Crea un evento y gestiona sus pruebas de cronometraje con Minerva Timing.</p>
         </div>
       </div>
 
@@ -91,7 +110,7 @@ export function EventsPage() {
           <h3>Nuevo evento</h3>
           <div className="field">
             <label>Nombre</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gran Premio Mobil Delvac 2026" required />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre del evento" required />
           </div>
           <div className="field">
             <label>Fecha</label>
@@ -100,6 +119,31 @@ export function EventsPage() {
           <div className="field">
             <label>Lugar</label>
             <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Autódromo..." />
+          </div>
+          <div className="field">
+            <label>Contraseña del panel</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Letras y números"
+              autoComplete="new-password"
+              required
+            />
+            <p className="muted" style={{ fontSize: "0.75rem", margin: "0.25rem 0 0" }}>
+              Se pedirá para entrar al panel de gestión de este evento.
+            </p>
+          </div>
+          <div className="field">
+            <label>Confirmar contraseña</label>
+            <input
+              type="password"
+              value={password2}
+              onChange={(e) => setPassword2(e.target.value)}
+              placeholder="Repite la contraseña"
+              autoComplete="new-password"
+              required
+            />
           </div>
           <button className="btn btn-primary" disabled={creating}>
             {creating ? "Creando…" : "Crear evento"}

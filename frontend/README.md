@@ -1,32 +1,48 @@
-# React + TypeScript + Vite
+# Minerva Timing — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+UI React + Vite + TypeScript del panel de eventos, tablero público y overlay.
 
-Currently, two official plugins are available:
+La documentación del producto (arranque, flujo, feeds, tablero) está en el [README raíz](../README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Desarrollo
 
-## React Compiler
+Desde la raíz del repo:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm run dev:frontend
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+O con API en paralelo:
+
+```bash
+npm run dev
+```
+
+- App: http://localhost:5173  
+- Proxy/API esperada: http://localhost:4000  
+
+## Entornos
+
+| Archivo | Cuándo |
+|---------|--------|
+| `.env.development` | `npm run dev` y `npm run build:local` |
+| `.env.production` | `npm run build` / `npm run build:production` |
+
+Variables: `VITE_API_BASE_URL`, `VITE_UPLOADS_BASE_URL`, `VITE_BACKEND_ORIGIN`.
+
+## Build
+
+```bash
+npm run build:local --prefix frontend       # local
+npm run build:production --prefix frontend  # nube
+npm run preview --prefix frontend
+```
+
+## Rutas principales
+
+| Ruta | Descripción |
+|------|-------------|
+| `/` | Lista de eventos |
+| `/eventos/:id` | Panel de gestión (protegido por contraseña) |
+| `/tablero/:id` | Resultados públicos (paginación 10 + rotación) |
+| `/overlay/:id` | Overlay para transmisión |

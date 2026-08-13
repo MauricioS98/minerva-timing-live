@@ -1,9 +1,25 @@
+/** Role of a timing point within a test circuit */
+export type TimingPointRole = "generic" | "start_finish" | "partial" | "start" | "finish";
+
 export interface TimingPoint {
   id: string;
   name: string;
   /** Offset in milliseconds relative to the first timing point (reference) */
   offsetMs: number;
   order: number;
+  /** Optional default role hint for UI (tests can override) */
+  role?: TimingPointRole;
+}
+
+/** How a test measures times across timing points */
+export type TestTimingMode = "point_to_point" | "start_finish_partial";
+
+/** One measured sector inside a start/finish + partial result */
+export interface ResultSegment {
+  from: string;
+  to: string;
+  timeMs: number;
+  timeFormatted: string;
 }
 
 export interface Pilot {
@@ -54,12 +70,22 @@ export interface ParsedCsv {
   flags: FlagEvent[];
   /** Passages inside green → stopped/checkered windows */
   racePassages: Passage[];
+  /** Detected or forced Orbits reader used when parsing */
+  sourceFormat?: "orbits4" | "orbits5";
+  /** Soft-deleted hits skipped (Borrado=Yes or Vueltas sin incrementar) */
+  deletedSkipped?: number;
 }
 
 export interface PartCsvSlot {
   timingPointId: string;
   filename: string;
   parsed: ParsedCsv;
+}
+
+/** One VS matchup in the start-order overlay (pilot numbers). */
+export interface StartOrderVsPair {
+  a: string;
+  b: string;
 }
 
 export interface TestPart {
@@ -72,6 +98,8 @@ export interface TestPart {
   combinedScoring?: CombinedScoring;
   /** Expected laps when combinedScoring is laps; null = indeterminate */
   expectedLaps?: number | null;
+  /** VS pairs for Orden de salida overlay */
+  startOrderVs?: StartOrderVsPair[];
   csvs: PartCsvSlot[];
 }
 
@@ -92,9 +120,18 @@ export interface Test {
   /** Include description in PDF export */
   showDescriptionInPdf: boolean;
   order: number;
-  /** Timing segment for unified results / fusion (point ids) */
+  /**
+   * point_to_point: single Desde→Hasta (default).
+   * start_finish_partial: start/finish point + intermediate partial(s) → sectors + total.
+   */
+  timingMode?: TestTimingMode;
+  /** Timing segment for unified results / fusion (point ids) — point_to_point mode */
   fromPointId?: string | null;
   toPointId?: string | null;
+  /** Start/finish point id when timingMode is start_finish_partial */
+  startFinishPointId?: string | null;
+  /** Intermediate partial point ids when timingMode is start_finish_partial */
+  partialPointIds?: string[];
   parts: TestPart[];
   penalties: PilotPenalty[];
 }
@@ -136,6 +173,23 @@ export interface SavedFusion {
   createdAt: string;
 }
 
+/** Entry on the public results board (publication order) */
+export interface ResultsBoardEntry {
+  id: string;
+  /** Unified test result or saved fusion */
+  kind: "unified" | "fusion";
+  /** testId or fusionId */
+  refId: string;
+  /**
+   * When kind is unified and partId is set, the board shows that salida
+   * (useful for start/finish + parcial) instead of the unified best time.
+   */
+  partId?: string | null;
+  title: string;
+  publishedAt: string;
+  order: number;
+}
+
 export interface Event {
   id: string;
   name: string;
@@ -143,11 +197,36 @@ export interface Event {
   location: string;
   headerImage: string | null;
   footerText: string;
+  /**
+   * Password required to open the management panel.
+   * Never returned by public/list APIs. Existing events without one get "00000".
+   */
+  password: string;
+  /** 4 colores del evento: [acento, resaltado, fondo paneles, texto]. null = paleta Minerva Timing */
+  themeColors?: string[] | null;
   timingPoints: TimingPoint[];
   /** Pilots registered for this event only */
   pilots: Pilot[];
   tests: Test[];
   fusions?: SavedFusion[];
+  /** Public board: unified results + fusions in publish order */
+  resultsBoard?: ResultsBoardEntry[];
+  /**
+   * Seconds between auto page changes on the public board (10 pilots per page).
+   * Default 10. Overlay is unaffected.
+   */
+  boardPageSeconds?: number;
+  /** Broadcast overlay style: classic Minerva tower or RedBull graphic pack */
+  overlayVariant?: "classic" | "redbull";
+  /** Overlay times: sector traps + total, or total only */
+  overlayTiming?: "splits" | "total";
+  /**
+   * CSV reader for Orbits exports.
+   * auto = detect from headers (Borrado → Orbits 5; sin Borrado → Orbits 4).
+   */
+  csvSource?: "auto" | "orbits4" | "orbits5";
+  /** Single published Orden de salida for the VS overlay (null = none) */
+  publishedStartOrder?: { testId: string; partId: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,4 +262,9 @@ export interface ResultRow {
   expectedLaps?: number | null;
   /** True when laps < expected in lap mode */
   lapsIncomplete?: boolean;
+  /**
+   * Sector times when timingMode is start_finish_partial
+   * (e.g. A→B, B→A). Ranking still uses timeMs (= total).
+   */
+  segments?: ResultSegment[];
 }

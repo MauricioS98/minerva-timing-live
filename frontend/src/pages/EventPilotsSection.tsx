@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { ConfirmDialog, type ConfirmDialogState } from "../components/ConfirmDialog";
+import { matchesPilotSearch } from "../lib/search";
 import type { Pilot } from "../types";
 
 const empty: Omit<Pilot, "id"> = { number: "", name: "", category: "", league: "", notes: "" };
@@ -49,6 +50,7 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
   const [expandedPilots, setExpandedPilots] = useState<Record<string, boolean>>({});
   const [filterCategory, setFilterCategory] = useState("");
   const [filterLeague, setFilterLeague] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const [dialog, setDialog] = useState<ConfirmDialogState | null>(null);
@@ -79,9 +81,10 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
       pilots.filter((p) => {
         if (filterCategory && p.category !== filterCategory) return false;
         if (filterLeague && p.league !== filterLeague) return false;
+        if (!matchesPilotSearch(searchQuery, p.number, p.name)) return false;
         return true;
       }),
-    [pilots, filterCategory, filterLeague]
+    [pilots, filterCategory, filterLeague, searchQuery]
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredPilots.length / PAGE_SIZE));
@@ -99,6 +102,11 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
 
   const setFilterLeagueSafe = (value: string) => {
     setFilterLeague(value);
+    setPage(1);
+  };
+
+  const setSearchQuerySafe = (value: string) => {
+    setSearchQuery(value);
     setPage(1);
   };
 
@@ -204,20 +212,20 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
   }, [preview, mapping]);
 
   return (
-    <div className="section">
-      <div className={`accordion-item ${sectionOpen ? "open" : ""}`}>
+    <div className="pilots-section">
+      <div className={`accordion-item pilots-shell ${sectionOpen ? "open" : ""}`}>
         <button
           type="button"
           className="accordion-trigger"
           onClick={() => setSectionOpen((o) => !o)}
         >
           <div className="accordion-trigger-main">
-            <strong>Pilotos del evento</strong>
+            <strong>Base de pilotos</strong>
             <span className="muted">
               {pilots.length} registrados
               {!sectionOpen
-                ? " · Clic para expandir importación, alta y lista"
-                : " · Esta base solo aplica a este evento"}
+                ? " · Expandir para importar, alta y lista"
+                : " · Solo aplica a este evento"}
             </span>
           </div>
           <span className="row-inline" style={{ flexShrink: 0 }}>
@@ -342,13 +350,14 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
                       {filteredPilots.length !== pilots.length ? ` de ${pilots.length}` : ""})
                     </span>
                   </h3>
-                  {(filterCategory || filterLeague) && (
+                  {(filterCategory || filterLeague || searchQuery) && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
                       onClick={() => {
                         setFilterCategorySafe("");
                         setFilterLeagueSafe("");
+                        setSearchQuerySafe("");
                       }}
                     >
                       Limpiar filtros
@@ -357,6 +366,16 @@ export function EventPilotsSection({ eventId, pilots, onChange }: Props) {
                 </div>
 
                 <div className="pilots-filters">
+                  <div className="field pilots-search-field">
+                    <label>Buscar</label>
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuerySafe(e.target.value)}
+                      placeholder="Nº o nombre…"
+                      autoComplete="off"
+                    />
+                  </div>
                   <div className="field">
                     <label>Categoría</label>
                     <select
