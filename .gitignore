@@ -8,6 +8,5 @@ dist/
 .env.*.local
 frontend/.env.local
 frontend/.env.*.local
-frontend/.env.*
 data/uploads/headers/*
 !data/uploads/headers/.gitkeep
