@@ -6,6 +6,7 @@ export type PonyMaltaRowProps = {
   position: number;
   name: string;
   time: string;
+  gap: string;
   enterIndex: number;
   visible: boolean;
   exiting?: boolean;
@@ -15,6 +16,7 @@ export function PonyMaltaRow({
   position,
   name,
   time,
+  gap,
   enterIndex,
   visible,
   exiting = false,
@@ -68,6 +70,9 @@ export function PonyMaltaRow({
       </span>
       <span className={`pm-row-time${timeIn ? " pm-row-time--in" : ""}${flash ? " pm-row-time--flash" : ""}`}>
         <span className="pm-txt">{time}</span>
+      </span>
+      <span className={`pm-row-gap${timeIn ? " pm-row-gap--in" : ""}`}>
+        {gap ? <span className="pm-txt">{gap}</span> : null}
       </span>
     </div>
   );

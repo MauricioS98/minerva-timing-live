@@ -27,6 +27,7 @@ type ViewRow = {
   position: number;
   name: string;
   time: string;
+  gap: string;
 };
 
 function isFusionRow(r: ResultRow | FusionRow): r is FusionRow {
@@ -66,12 +67,45 @@ function rankStandings(
   return copy.sort((a, b) => a.position - b.position);
 }
 
+function rowLaps(r: ResultRow | FusionRow): number {
+  if (isFusionRow(r)) return 0;
+  const n = r.laps;
+  return n == null || Number.isNaN(Number(n)) ? 0 : Number(n);
+}
+
+function rowTotalMs(r: ResultRow | FusionRow): number {
+  return isFusionRow(r) ? r.totalTimeMs : r.timeMs;
+}
+
+/** Gap to leader: +x v, +xx.xxx s, or +xx:xx.xxx m. Empty for P1. */
+function formatDelta(row: ResultRow | FusionRow, leader: ResultRow | FusionRow): string {
+  if (row === leader) return "";
+  const leaderLaps = rowLaps(leader);
+  const laps = rowLaps(row);
+  if (leaderLaps > 0 && laps < leaderLaps) {
+    return `+${leaderLaps - laps} v`;
+  }
+  const gapMs = rowTotalMs(row) - rowTotalMs(leader);
+  if (!Number.isFinite(gapMs) || gapMs <= 0) return "";
+  if (gapMs < 60_000) {
+    const sec = gapMs / 1000;
+    const [int, frac] = sec.toFixed(3).split(".");
+    return `+${int.padStart(2, "0")}.${frac} s`;
+  }
+  const min = Math.floor(gapMs / 60_000);
+  const rem = gapMs % 60_000;
+  const [int, frac] = (rem / 1000).toFixed(3).split(".");
+  return `+${String(min).padStart(2, "0")}:${int.padStart(2, "0")}.${frac} m`;
+}
+
 function toViewRows(rows: (ResultRow | FusionRow)[]): ViewRow[] {
+  const leader = rows[0];
   return rows.map((r) => ({
     key: String(r.number || `p${r.position}`),
     position: r.position,
     name: r.name || "—",
     time: lastLapDisplay(r),
+    gap: leader ? formatDelta(r, leader) : "",
   }));
 }
 
@@ -268,6 +302,7 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
+              <span><span className="pm-txt">Dif.</span></span>
             </div>
             <div className="pm-table-body" aria-label="Tabla de posiciones">
               {rowsReady &&
@@ -277,6 +312,7 @@ export function PonyMaltaOverlay({
                     position={r.position}
                     name={r.name}
                     time={r.time}
+                    gap={r.gap}
                     enterIndex={i}
                     visible={rowsReady}
                     exiting={exiting}
@@ -292,6 +328,7 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
+              <span><span className="pm-txt">Dif.</span></span>
             </div>
             <div className="pm-table-body" aria-label="Tabla de posiciones">
               {rowsReady &&
@@ -301,6 +338,7 @@ export function PonyMaltaOverlay({
                     position={r.position}
                     name={r.name}
                     time={r.time}
+                    gap={r.gap}
                     enterIndex={i}
                     visible={rowsReady}
                     exiting={exiting}
