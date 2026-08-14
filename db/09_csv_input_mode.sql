@@ -1,4 +1,7 @@
 -- CSV por piloto: modo de carga + un slot por N° dentro de la salida.
+-- Aplicar también en Supabase: SQL Editor → New query → Run.
+
+BEGIN;
 
 ALTER TABLE test_parts
   ADD COLUMN IF NOT EXISTS csv_input_mode TEXT NULL;
@@ -29,3 +32,5 @@ DROP INDEX IF EXISTS csv_uploads_part_pilot_uq;
 CREATE UNIQUE INDEX csv_uploads_part_pilot_uq
   ON csv_uploads (part_id, lower(btrim(pilot_number)))
   WHERE pilot_number IS NOT NULL AND btrim(pilot_number) <> '';
+
+COMMIT;
