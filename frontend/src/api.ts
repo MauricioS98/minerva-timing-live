@@ -125,6 +125,7 @@ export const api = {
     data: {
       name?: string;
       combinedMode?: boolean;
+      csvInputMode?: "points" | "combined" | "pilots";
       combinedScoring?: "time" | "laps";
       expectedLaps?: number | null;
     }
@@ -141,6 +142,7 @@ export const api = {
     data: {
       name?: string;
       combinedMode?: boolean;
+      csvInputMode?: "points" | "combined" | "pilots";
       combinedScoring?: "time" | "laps";
       expectedLaps?: number | null;
       startOrderVs?: { a: string; b: string }[];
@@ -197,16 +199,18 @@ export const api = {
     partId: string,
     file: File,
     timingPointId: string,
-    combinedMode?: boolean
+    opts?: { combinedMode?: boolean; pilotNumber?: string }
   ) => {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("timingPointId", timingPointId);
-    if (combinedMode) fd.append("combinedMode", "true");
+    if (opts?.combinedMode) fd.append("combinedMode", "true");
+    if (opts?.pilotNumber) fd.append("pilotNumber", opts.pilotNumber);
     return request<{
       slot: {
         timingPointId: string;
         filename: string;
+        pilotNumber?: string;
         parsed: unknown;
       };
       partMeta: {
@@ -214,6 +218,7 @@ export const api = {
         name: string;
         order: number;
         combinedMode: boolean;
+        csvInputMode?: "points" | "combined" | "pilots";
         combinedScoring?: "time" | "laps";
         expectedLaps: number | null;
       };

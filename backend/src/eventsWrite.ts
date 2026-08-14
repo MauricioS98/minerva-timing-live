@@ -116,11 +116,16 @@ async function insertFlagsBatch(
 
 async function writeCsvSlot(client: Q, partId: string, slot: PartCsvSlot): Promise<void> {
   const uploadId = randomUUID();
+  const pilotNumber = String(slot.pilotNumber || "").trim() || null;
+  const timingPointId =
+    slot.timingPointId && /^[0-9a-f-]{36}$/i.test(slot.timingPointId)
+      ? slot.timingPointId
+      : null;
   await q(
     client,
-    `INSERT INTO csv_uploads (id, part_id, timing_point_id, filename, uploaded_at)
-     VALUES ($1,$2,$3,$4, now())`,
-    [uploadId, partId, slot.timingPointId, slot.filename]
+    `INSERT INTO csv_uploads (id, part_id, timing_point_id, pilot_number, filename, uploaded_at)
+     VALUES ($1,$2,$3,$4,$5, now())`,
+    [uploadId, partId, timingPointId, pilotNumber, slot.filename]
   );
   const parsed = slot.parsed || {
     filename: slot.filename,
@@ -142,12 +147,25 @@ async function writeCsvSlot(client: Q, partId: string, slot: PartCsvSlot): Promi
  * Does NOT rewrite sibling slots — important when ARCO + CAJONES are uploaded separately.
  */
 export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Promise<void> {
+  const pilotNumber = String(slot.pilotNumber || "").trim();
   await withTransaction(async (client) => {
-    await q(
-      client,
-      `DELETE FROM csv_uploads WHERE part_id = $1 AND timing_point_id IS NOT DISTINCT FROM $2`,
-      [partId, slot.timingPointId]
-    );
+    if (pilotNumber) {
+      await q(
+        client,
+        `DELETE FROM csv_uploads
+         WHERE part_id = $1 AND lower(btrim(pilot_number)) = lower(btrim($2))`,
+        [partId, pilotNumber]
+      );
+    } else {
+      await q(
+        client,
+        `DELETE FROM csv_uploads
+         WHERE part_id = $1
+           AND timing_point_id IS NOT DISTINCT FROM $2
+           AND pilot_number IS NULL`,
+        [partId, slot.timingPointId]
+      );
+    }
     await writeCsvSlot(client, partId, slot);
   });
 }
@@ -183,6 +201,7 @@ export async function updatePartCsvMeta(
   partId: string,
   meta: {
     combinedMode?: boolean;
+    csvInputMode?: string | null;
     combinedScoring?: string | null;
     expectedLaps?: number | null;
   }
@@ -193,6 +212,10 @@ export async function updatePartCsvMeta(
   if (meta.combinedMode !== undefined) {
     sets.push(`combined_mode = $${i++}`);
     params.push(Boolean(meta.combinedMode));
+  }
+  if (meta.csvInputMode !== undefined) {
+    sets.push(`csv_input_mode = $${i++}`);
+    params.push(meta.csvInputMode);
   }
   if (meta.combinedScoring !== undefined) {
     sets.push(`combined_scoring = $${i++}`);
@@ -395,19 +418,30 @@ export async function persistEvent(event: Event): Promise<Event> {
 
       for (const part of t.parts || []) {
         const scoring =
-          part.combinedMode && !part.combinedScoring
-            ? "time"
-            : part.combinedScoring || null;
+          part.csvInputMode === "combined" || part.combinedMode
+            ? part.combinedScoring || "time"
+            : part.csvInputMode === "pilots"
+              ? part.combinedScoring || "time"
+              : part.combinedScoring || null;
+        const csvMode =
+          part.csvInputMode === "pilots" ||
+          part.csvInputMode === "combined" ||
+          part.csvInputMode === "points"
+            ? part.csvInputMode
+            : part.combinedMode
+              ? "combined"
+              : "points";
         await q(
           client,
           `INSERT INTO test_parts (
-            id, test_id, event_id, name, sort_order, combined_mode, combined_scoring,
+            id, test_id, event_id, name, sort_order, combined_mode, csv_input_mode, combined_scoring,
             expected_laps, start_order_vs
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             sort_order = EXCLUDED.sort_order,
             combined_mode = EXCLUDED.combined_mode,
+            csv_input_mode = EXCLUDED.csv_input_mode,
             combined_scoring = EXCLUDED.combined_scoring,
             expected_laps = EXCLUDED.expected_laps,
             start_order_vs = EXCLUDED.start_order_vs`,
@@ -418,6 +452,7 @@ export async function persistEvent(event: Event): Promise<Event> {
             part.name,
             part.order,
             Boolean(part.combinedMode),
+            csvMode,
             scoring,
             part.expectedLaps ?? null,
             JSON.stringify(part.startOrderVs || []),

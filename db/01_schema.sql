@@ -145,6 +145,8 @@ CREATE TABLE test_parts (
   name               TEXT NOT NULL,
   sort_order         INTEGER NOT NULL DEFAULT 0,
   combined_mode      BOOLEAN NOT NULL DEFAULT FALSE,
+  csv_input_mode     TEXT NULL
+                       CHECK (csv_input_mode IS NULL OR csv_input_mode IN ('points', 'combined', 'pilots')),
   combined_scoring   TEXT NULL
                        CHECK (combined_scoring IS NULL OR combined_scoring IN ('time', 'laps')),
   expected_laps      INTEGER NULL CHECK (expected_laps IS NULL OR expected_laps > 0),
@@ -163,11 +165,19 @@ CREATE TABLE csv_uploads (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   part_id           UUID NOT NULL REFERENCES test_parts (id) ON DELETE CASCADE,
   timing_point_id   UUID NULL REFERENCES timing_points (id) ON DELETE SET NULL,
+  -- CSV por piloto: un archivo por N° (NULL en CSV único / por punto)
+  pilot_number      TEXT NULL,
   filename          TEXT NOT NULL,
-  uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- Un slot por punto dentro de la parte (CSV único también guarda un timing_point_id)
-  UNIQUE (part_id, timing_point_id)
+  uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX csv_uploads_part_point_uq
+  ON csv_uploads (part_id, timing_point_id)
+  WHERE pilot_number IS NULL;
+
+CREATE UNIQUE INDEX csv_uploads_part_pilot_uq
+  ON csv_uploads (part_id, lower(btrim(pilot_number)))
+  WHERE pilot_number IS NOT NULL AND btrim(pilot_number) <> '';
 
 CREATE INDEX idx_csv_uploads_part ON csv_uploads (part_id);
 

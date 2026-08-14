@@ -132,15 +132,25 @@ for (const file of files) {
 
     for (const part of t.parts || []) {
       const scoring =
-        part.combinedMode && !part.combinedScoring ? "time" : part.combinedScoring || null;
+        part.combinedMode || part.csvInputMode === "pilots" || part.csvInputMode === "combined"
+          ? part.combinedScoring || "time"
+          : part.combinedScoring || null;
+      const csvMode =
+        part.csvInputMode === "pilots" ||
+        part.csvInputMode === "combined" ||
+        part.csvInputMode === "points"
+          ? part.csvInputMode
+          : part.combinedMode
+            ? "combined"
+            : "points";
       w(
-        `INSERT INTO test_parts (id, test_id, event_id, name, sort_order, combined_mode, combined_scoring, expected_laps) VALUES (${sqlUuid(part.id)}, ${sqlUuid(t.id)}, ${sqlUuid(event.id)}, ${sqlStr(part.name)}, ${sqlInt(part.order)}, ${sqlBool(part.combinedMode)}, ${sqlStr(scoring)}, ${part.expectedLaps == null ? "NULL" : sqlInt(part.expectedLaps)});`
+        `INSERT INTO test_parts (id, test_id, event_id, name, sort_order, combined_mode, csv_input_mode, combined_scoring, expected_laps) VALUES (${sqlUuid(part.id)}, ${sqlUuid(t.id)}, ${sqlUuid(event.id)}, ${sqlStr(part.name)}, ${sqlInt(part.order)}, ${sqlBool(part.combinedMode)}, ${sqlStr(csvMode)}, ${sqlStr(scoring)}, ${part.expectedLaps == null ? "NULL" : sqlInt(part.expectedLaps)});`
       );
 
       for (const slot of part.csvs || []) {
         const uploadId = randomUUID();
         w(
-          `INSERT INTO csv_uploads (id, part_id, timing_point_id, filename, uploaded_at) VALUES (${sqlUuid(uploadId)}, ${sqlUuid(part.id)}, ${sqlUuid(slot.timingPointId)}, ${sqlStr(slot.filename)}, now());`
+          `INSERT INTO csv_uploads (id, part_id, timing_point_id, pilot_number, filename, uploaded_at) VALUES (${sqlUuid(uploadId)}, ${sqlUuid(part.id)}, ${sqlUuid(slot.timingPointId)}, ${slot.pilotNumber ? sqlStr(slot.pilotNumber) : "NULL"}, ${sqlStr(slot.filename)}, now());`
         );
 
         const parsed = slot.parsed || { passages: [], racePassages: [], flags: [] };

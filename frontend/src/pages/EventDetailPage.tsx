@@ -6,6 +6,7 @@ import { canDeletePart, canDeleteTest } from "../lib/deleteGuards";
 import { isEventUnlocked, markEventUnlocked } from "../lib/eventAuth";
 import { matchesPilotSearch } from "../lib/search";
 import type {
+  CsvInputMode,
   Event,
   PartCsvSlot,
   ResultRow,
@@ -14,6 +15,7 @@ import type {
   TestPart,
   TimingPoint,
 } from "../types";
+import { csvInputModeOf } from "../types";
 import { MINERVA_COLORS, THEME_COLOR_LABELS, resolveThemeColors } from "../theme";
 import { EventPilotsSection } from "./EventPilotsSection";
 import { EventFusionPanel } from "./EventFusionPanel";
@@ -458,23 +460,30 @@ export function EventDetailPage() {
     const test = event.tests.find((t) => t.id === testId);
     const name = prompt("Nombre de la parte / salida", `Salida ${(test?.parts.length || 0) + 1}`);
     if (!name) return;
-    const p = (await api.createPart(event.id, testId, { name, combinedMode: false })) as TestPart;
+    const p = (await api.createPart(event.id, testId, { name, csvInputMode: "points" })) as TestPart;
     await load();
     setPartByTest((prev) => ({ ...prev, [testId]: p.id }));
     setExpandedTests((prev) => ({ ...prev, [testId]: true }));
   };
 
-  const uploadCsv = async (testId: string, part: TestPart, timingPointId: string, file: File) => {
+  const setPartCsvMode = async (testId: string, part: TestPart, mode: CsvInputMode) => {
+    await api.updatePart(event.id, testId, part.id, { csvInputMode: mode });
+    await load();
+  };
+
+  const uploadCsv = async (
+    testId: string,
+    part: TestPart,
+    timingPointId: string,
+    file: File,
+    pilotNumber?: string
+  ) => {
     setError("");
     try {
-      const res = await api.uploadCsv(
-        event.id,
-        testId,
-        part.id,
-        file,
-        timingPointId,
-        part.combinedMode
-      );
+      const res = await api.uploadCsv(event.id, testId, part.id, file, timingPointId, {
+        combinedMode: csvInputModeOf(part) === "combined",
+        pilotNumber,
+      });
       const summary = res.summary as {
         uniquePilots: number;
         flags: { type: string; label: string }[];
@@ -496,12 +505,18 @@ export function EventDetailPage() {
                   parts: t.parts.map((p) => {
                     if (p.id !== part.id) return p;
                     const csvs = [...(p.csvs || [])];
-                    const idx = csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+                    const slotPilot = String(slot.pilotNumber || "").trim().toUpperCase();
+                    const idx = slotPilot
+                      ? csvs.findIndex(
+                          (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotPilot
+                        )
+                      : csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
                     if (idx >= 0) csvs[idx] = slot;
                     else csvs.push(slot);
                     return {
                       ...p,
                       combinedMode: meta.combinedMode,
+                      csvInputMode: meta.csvInputMode ?? p.csvInputMode,
                       combinedScoring: meta.combinedScoring ?? p.combinedScoring,
                       expectedLaps: meta.expectedLaps ?? p.expectedLaps,
                       csvs,
@@ -912,7 +927,7 @@ export function EventDetailPage() {
           <div>
             <span className="manage-section-kicker">03 · Cronometraje</span>
             <h2>Pruebas</h2>
-            <p>Mangas, salidas, CSV por punto y publicación al tablero.</p>
+            <p>Mangas, salidas, CSV único / por punto / por piloto y publicación al tablero.</p>
           </div>
           <button className="btn btn-secondary" onClick={addTest}>
             + Nueva prueba
@@ -930,6 +945,7 @@ export function EventDetailPage() {
               const open = Boolean(expandedTests[test.id]);
               const selectedPartId = partByTest[test.id] ?? test.parts[0]?.id ?? null;
               const selectedPart = test.parts.find((p) => p.id === selectedPartId);
+              const csvMode = selectedPart ? csvInputModeOf(selectedPart) : "points";
               const testResults = resultsByTest[test.id];
               const showLapsCol =
                 testResults?.rows.some((r) => r.laps != null && r.laps > 0) ?? false;
@@ -946,13 +962,20 @@ export function EventDetailPage() {
                   }
                 }
               }
-              const lapExportPartId =
-                testResults?.partId &&
-                test.parts.find((p) => p.id === testResults.partId)?.combinedScoring === "laps"
-                  ? testResults.partId
-                  : selectedPart?.combinedMode && selectedPart.combinedScoring === "laps"
-                    ? selectedPartId
-                    : undefined;
+              const resultPart = testResults?.partId
+                ? test.parts.find((p) => p.id === testResults.partId)
+                : undefined;
+              const lapScoringPart = (p: TestPart | undefined) =>
+                Boolean(
+                  p &&
+                    (csvInputModeOf(p) === "combined" || csvInputModeOf(p) === "pilots") &&
+                    p.combinedScoring === "laps"
+                );
+              const lapExportPartId = lapScoringPart(resultPart)
+                ? resultPart!.id
+                : lapScoringPart(selectedPart)
+                  ? selectedPartId
+                  : undefined;
               const showLapByLapExport = Boolean(
                 lapExportPartId && testResults && testResults.rows.length > 0
               );
@@ -1058,11 +1081,15 @@ export function EventDetailPage() {
                           <h4>Salidas / CSV</h4>
                           {selectedPart && (
                             <span className="chip">
-                              {selectedPart.combinedMode
+                              {csvMode === "pilots"
                                 ? selectedPart.combinedScoring === "laps"
-                                  ? "CSV único · vueltas"
-                                  : "CSV único · tiempo"
-                                : "CSV por punto"}
+                                  ? "CSV por piloto · vueltas"
+                                  : "CSV por piloto · tiempo"
+                                : csvMode === "combined"
+                                  ? selectedPart.combinedScoring === "laps"
+                                    ? "CSV único · vueltas"
+                                    : "CSV único · tiempo"
+                                  : "CSV por punto"}
                             </span>
                           )}
                         </header>
@@ -1082,11 +1109,15 @@ export function EventDetailPage() {
                                   }
                                 >
                                   {p.name}
-                                  {p.combinedMode
+                                  {csvInputModeOf(p) === "pilots"
                                     ? p.combinedScoring === "laps"
-                                      ? " · vueltas"
-                                      : " · tiempo"
-                                    : ""}
+                                      ? " · piloto · vueltas"
+                                      : " · piloto"
+                                    : csvInputModeOf(p) === "combined"
+                                      ? p.combinedScoring === "laps"
+                                        ? " · vueltas"
+                                        : " · tiempo"
+                                      : ""}
                                 </button>
                               ))}
                             </div>
@@ -1094,27 +1125,27 @@ export function EventDetailPage() {
                             {selectedPart && (
                               <div className="stack" style={{ gap: "0.85rem" }}>
                                 <div className="test-toolbar test-toolbar-subtle">
-                                  <button
-                                    className="btn btn-ghost btn-sm"
-                                    onClick={async () => {
-                                      if (selectedPart.combinedMode) {
-                                        await api.updatePart(event.id, test.id, selectedPart.id, {
-                                          combinedMode: false,
-                                        });
-                                      } else {
-                                        await api.updatePart(event.id, test.id, selectedPart.id, {
-                                          combinedMode: true,
-                                          combinedScoring: "time",
-                                          expectedLaps: null,
-                                        });
-                                      }
-                                      load();
-                                    }}
-                                  >
-                                    {selectedPart.combinedMode
-                                      ? "Cambiar a CSV por punto"
-                                      : "Cambiar a CSV único"}
-                                  </button>
+                                  <div className="csv-mode-switch">
+                                    {(
+                                      [
+                                        ["combined", "CSV único"],
+                                        ["points", "CSV por punto"],
+                                        ["pilots", "CSV por piloto"],
+                                      ] as const
+                                    ).map(([mode, label]) => (
+                                      <button
+                                        key={mode}
+                                        type="button"
+                                        className={`btn btn-sm ${csvMode === mode ? "btn-primary" : "btn-ghost"}`}
+                                        onClick={async () => {
+                                          if (csvMode === mode) return;
+                                          await setPartCsvMode(test.id, selectedPart, mode);
+                                        }}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
                                   <button
                                     className="btn btn-danger btn-sm"
                                     onClick={() => requestDeletePart(test, selectedPart)}
@@ -1123,9 +1154,13 @@ export function EventDetailPage() {
                                   </button>
                                 </div>
 
-                                {selectedPart.combinedMode && (
+                                {(csvMode === "combined" || csvMode === "pilots") && (
                                   <div className="combined-settings">
-                                    <p className="combined-settings-title">Puntuación CSV único</p>
+                                    <p className="combined-settings-title">
+                                      {csvMode === "pilots"
+                                        ? "Puntuación CSV por piloto"
+                                        : "Puntuación CSV único"}
+                                    </p>
                                     <div className="combined-settings-row">
                                       <label className="combined-option">
                                         <input
@@ -1248,7 +1283,7 @@ export function EventDetailPage() {
                                   }}
                                 />
 
-                                {selectedPart.combinedMode ? (
+                                {csvMode === "combined" ? (
                                   <CsvDrop
                                     label="CSV único"
                                     hint={
@@ -1266,6 +1301,51 @@ export function EventDetailPage() {
                                       )
                                     }
                                   />
+                                ) : csvMode === "pilots" ? (
+                                  (event.pilots || []).length === 0 ? (
+                                    <div className="empty empty-sm">
+                                      Inscribe pilotos en el evento para cargar un CSV por cada uno.
+                                    </div>
+                                  ) : (
+                                    <div className="csv-grid">
+                                      {[...(event.pilots || [])]
+                                        .sort((a, b) =>
+                                          String(a.number).localeCompare(String(b.number), "es", {
+                                            numeric: true,
+                                          })
+                                        )
+                                        .map((pilot) => {
+                                          const key = String(pilot.number || "")
+                                            .replace(/^#/, "")
+                                            .trim()
+                                            .toUpperCase();
+                                          const slot = selectedPart.csvs.find(
+                                            (c) =>
+                                              String(c.pilotNumber || "")
+                                                .replace(/^#/, "")
+                                                .trim()
+                                                .toUpperCase() === key
+                                          );
+                                          return (
+                                            <CsvDrop
+                                              key={pilot.id || pilot.number}
+                                              label={`${pilot.number} · ${pilot.name || "Sin nombre"}`}
+                                              hint="CSV solo con los tiempos de este piloto"
+                                              filename={slot?.filename}
+                                              onFile={(f) =>
+                                                uploadCsv(
+                                                  test.id,
+                                                  selectedPart,
+                                                  points[0]?.id || "combined",
+                                                  f,
+                                                  pilot.number
+                                                )
+                                              }
+                                            />
+                                          );
+                                        })}
+                                    </div>
+                                  )
                                 ) : (
                                   <div className="csv-grid">
                                     {points.map((p) => {
@@ -1294,9 +1374,11 @@ export function EventDetailPage() {
                                   Calcular resultado parcial
                                 </button>
                                 <p className="muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0" }}>
-                                  {selectedPart.combinedMode && selectedPart.combinedScoring !== "laps"
+                                  {csvMode === "combined" && selectedPart.combinedScoring !== "laps"
                                     ? "Start y Finish salen del mismo CSV (1ª y 2ª pasada). Si el CSV es acumulativo entre salidas, solo se listan pilotos nuevos."
-                                    : "Si el CSV es acumulativo, solo se listan pilotos nuevos respecto a salidas anteriores."}
+                                    : csvMode === "pilots"
+                                      ? "Cada archivo corresponde a un piloto. Por tiempo: 1ª pasada = Start y 2ª = Finish. Por vueltas: más vueltas en menor tiempo total."
+                                      : "Si el CSV es acumulativo, solo se listan pilotos nuevos respecto a salidas anteriores."}
                                 </p>
                               </div>
                             )}
@@ -1310,24 +1392,30 @@ export function EventDetailPage() {
                         </header>
 
                         <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 0.5rem" }}>
-                          {selectedPart?.combinedMode
+                          {csvMode === "combined"
                             ? "Esta salida usa CSV único: Start y Finish se leen del mismo archivo."
-                            : "Configura cómo se miden los tiempos en esta prueba. La fusión usa esta configuración de cada prueba por separado."}
+                            : csvMode === "pilots"
+                              ? "Esta salida usa un CSV por piloto. El ranking une todos los archivos cargados."
+                              : "Configura cómo se miden los tiempos en esta prueba. La fusión usa esta configuración de cada prueba por separado."}
                         </p>
 
                         <div className="results-controls">
-                          {selectedPart?.combinedMode ? (
+                          {csvMode === "combined" || csvMode === "pilots" ? (
                             <div className="combined-results-note">
                               {selectedPart.combinedScoring === "laps" ? (
                                 <p>
-                                  Clasificación por <strong>vueltas</strong> del CSV único (columnas de
-                                  vueltas / tiempo transcurrido).
+                                  Clasificación por <strong>vueltas</strong>
+                                  {csvMode === "pilots"
+                                    ? " de los CSV por piloto"
+                                    : " del CSV único"}{" "}
+                                  (columnas de vueltas / tiempo transcurrido).
                                 </p>
                               ) : (
                                 <p>
                                   Por tiempo: la <strong>1ª pasada</strong> es la salida y la{" "}
-                                  <strong>2ª</strong> la llegada (mismo CSV). Si solo hay una pasada con
-                                  Tiempo de vuelta &gt; 0, se usa ese valor.
+                                  <strong>2ª</strong> la llegada
+                                  {csvMode === "pilots" ? " (un CSV por piloto)" : " (mismo CSV)"}. Si
+                                  solo hay una pasada con Tiempo de vuelta &gt; 0, se usa ese valor.
                                 </p>
                               )}
                             </div>
@@ -1471,7 +1559,7 @@ export function EventDetailPage() {
                           </button>
                         </div>
 
-                        {!selectedPart?.combinedMode &&
+                        {csvMode === "points" &&
                           (test.timingMode || "point_to_point") === "start_finish_partial" && (
                           <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 0.75rem" }}>
                             En este modo cada piloto debe tener <strong>2 pasadas</strong> en Start/Finish

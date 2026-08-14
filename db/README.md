@@ -14,7 +14,8 @@ Persistencia PostgreSQL con reglas **ACID**, equivalente funcional a `data/event
 |---------|-----|
 | `00_create_database.sql` | Crea (o recrea) la base `minerva_timing_live` |
 | `01_schema.sql` | Tablas, FKs, CHECKs, índices, trigger `updated_at` |
-| `02_seed.sql` | Datos actuales migrados desde `data/events/*.json` |
+| `08_overlay_variant_ponymalta.sql` | Overlay Circuito Pony Malta |
+| `09_csv_input_mode.sql` | CSV por piloto + modo de carga de la salida |
 
 Regenerar el seed tras cambiar JSON:
 

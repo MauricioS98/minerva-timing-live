@@ -170,7 +170,7 @@ export async function loadEvent(id: string): Promise<Event | null> {
     const partIds = partsRes.rows.map((r) => String(r.id));
     const csvsByPart = new Map<
       string,
-      { timingPointId: string; filename: string; uploadId: string }[]
+      { timingPointId: string; filename: string; uploadId: string; pilotNumber?: string }[]
     >();
 
     if (partIds.length > 0) {
@@ -186,8 +186,9 @@ export async function loadEvent(id: string): Promise<Event | null> {
         if (!csvsByPart.has(pid)) csvsByPart.set(pid, []);
         csvsByPart.get(pid)!.push({
           uploadId: String(r.id),
-          timingPointId: String(r.timing_point_id),
+          timingPointId: r.timing_point_id ? String(r.timing_point_id) : "",
           filename: String(r.filename),
+          pilotNumber: r.pilot_number ? String(r.pilot_number) : undefined,
         });
       }
 
@@ -243,6 +244,14 @@ export async function loadEvent(id: string): Promise<Event | null> {
           name: String(r.name),
           order: Number(r.sort_order || 0),
           combinedMode: Boolean(r.combined_mode),
+          csvInputMode:
+            r.csv_input_mode === "pilots" ||
+            r.csv_input_mode === "combined" ||
+            r.csv_input_mode === "points"
+              ? r.csv_input_mode
+              : Boolean(r.combined_mode)
+                ? "combined"
+                : "points",
           combinedScoring: r.combined_scoring
             ? (String(r.combined_scoring) as "time" | "laps")
             : undefined,
@@ -254,6 +263,7 @@ export async function loadEvent(id: string): Promise<Event | null> {
             return {
               timingPointId: s.timingPointId,
               filename: s.filename,
+              pilotNumber: s.pilotNumber,
               parsed: {
                 filename: s.filename,
                 passages,
@@ -281,6 +291,14 @@ export async function loadEvent(id: string): Promise<Event | null> {
           name: String(r.name),
           order: Number(r.sort_order || 0),
           combinedMode: Boolean(r.combined_mode),
+          csvInputMode:
+            r.csv_input_mode === "pilots" ||
+            r.csv_input_mode === "combined" ||
+            r.csv_input_mode === "points"
+              ? r.csv_input_mode
+              : Boolean(r.combined_mode)
+                ? "combined"
+                : "points",
           combinedScoring: r.combined_scoring
             ? (String(r.combined_scoring) as "time" | "laps")
             : undefined,
@@ -406,6 +424,7 @@ export async function getPartUploadContext(
   partName: string;
   partOrder: number;
   combinedMode: boolean;
+  csvInputMode: "points" | "combined" | "pilots";
   combinedScoring: "time" | "laps" | undefined;
   expectedLaps: number | null;
   firstTimingPointId: string | null;
@@ -421,6 +440,7 @@ export async function getPartUploadContext(
        p.name AS part_name,
        p.sort_order AS part_order,
        p.combined_mode,
+       p.csv_input_mode,
        p.combined_scoring,
        p.expected_laps,
        (
@@ -445,6 +465,14 @@ export async function getPartUploadContext(
     partName: String(row.part_name || ""),
     partOrder: Number(row.part_order || 0),
     combinedMode: Boolean(row.combined_mode),
+    csvInputMode:
+      row.csv_input_mode === "pilots" ||
+      row.csv_input_mode === "combined" ||
+      row.csv_input_mode === "points"
+        ? row.csv_input_mode
+        : Boolean(row.combined_mode)
+          ? "combined"
+          : "points",
     combinedScoring: row.combined_scoring
       ? (String(row.combined_scoring) as "time" | "laps")
       : undefined,

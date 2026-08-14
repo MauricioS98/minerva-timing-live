@@ -1339,6 +1339,12 @@ tr:hover td {
   color: #fff;
 }
 
+.csv-mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .csv-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

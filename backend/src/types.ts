@@ -48,6 +48,23 @@ export interface Passage {
 
 export type CombinedScoring = "time" | "laps";
 
+/** How CSVs are attached to a salida */
+export type CsvInputMode = "points" | "combined" | "pilots";
+
+export function csvInputModeOf(part: {
+  csvInputMode?: CsvInputMode;
+  combinedMode?: boolean;
+}): CsvInputMode {
+  if (
+    part.csvInputMode === "pilots" ||
+    part.csvInputMode === "combined" ||
+    part.csvInputMode === "points"
+  ) {
+    return part.csvInputMode;
+  }
+  return part.combinedMode ? "combined" : "points";
+}
+
 export type FlagType =
   | "warmup"
   | "green"
@@ -80,6 +97,8 @@ export interface PartCsvSlot {
   timingPointId: string;
   filename: string;
   parsed: ParsedCsv;
+  /** When the salida uses CSV por piloto */
+  pilotNumber?: string;
 }
 
 /** One VS matchup in the start-order overlay (pilot numbers). */
@@ -94,6 +113,8 @@ export interface TestPart {
   order: number;
   /** When true, a single CSV already contains both times via Tiempo de vuelta */
   combinedMode: boolean;
+  /** points = CSV por punto; combined = CSV único; pilots = un CSV por piloto */
+  csvInputMode?: CsvInputMode;
   /** How to rank combined CSV results (default: time) */
   combinedScoring?: CombinedScoring;
   /** Expected laps when combinedScoring is laps; null = indeterminate */

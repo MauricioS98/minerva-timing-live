@@ -84,7 +84,13 @@ function normalizeLoaded(event: Event): Event {
     penalties: t.penalties || [],
     parts: (t.parts || []).map((p) => ({
       ...p,
-      combinedScoring: p.combinedScoring ?? (p.combinedMode ? "time" : undefined),
+      combinedScoring: p.combinedScoring ?? (p.combinedMode || p.csvInputMode === "pilots" ? "time" : undefined),
+      csvInputMode:
+        p.csvInputMode === "pilots" || p.csvInputMode === "combined" || p.csvInputMode === "points"
+          ? p.csvInputMode
+          : p.combinedMode
+            ? "combined"
+            : "points",
       expectedLaps: p.expectedLaps ?? null,
       startOrderVs: Array.isArray(p.startOrderVs) ? p.startOrderVs : [],
     })),
@@ -152,6 +158,7 @@ function patchEventCacheCsvSlot(
   slot: PartCsvSlot,
   partMeta?: {
     combinedMode?: boolean;
+    csvInputMode?: string | null;
     combinedScoring?: string | null;
     expectedLaps?: number | null;
   }
@@ -161,11 +168,23 @@ function patchEventCacheCsvSlot(
   for (const test of hit.event.tests || []) {
     const part = (test.parts || []).find((p) => p.id === partId);
     if (!part) continue;
-    const idx = part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+    const slotKey = String(slot.pilotNumber || "").trim().toUpperCase();
+    const idx = slotKey
+      ? part.csvs.findIndex(
+          (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotKey
+        )
+      : part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
     if (idx >= 0) part.csvs[idx] = slot;
     else part.csvs.push(slot);
     if (partMeta) {
       if (partMeta.combinedMode !== undefined) part.combinedMode = Boolean(partMeta.combinedMode);
+      if (
+        partMeta.csvInputMode === "pilots" ||
+        partMeta.csvInputMode === "combined" ||
+        partMeta.csvInputMode === "points"
+      ) {
+        part.csvInputMode = partMeta.csvInputMode;
+      }
       if (partMeta.combinedScoring !== undefined) {
         part.combinedScoring =
           partMeta.combinedScoring === "laps" || partMeta.combinedScoring === "time"
@@ -187,6 +206,7 @@ export async function savePartCsvSlot(
   slot: PartCsvSlot,
   partMeta?: {
     combinedMode?: boolean;
+    csvInputMode?: string | null;
     combinedScoring?: string | null;
     expectedLaps?: number | null;
   }

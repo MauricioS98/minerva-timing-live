@@ -3,7 +3,7 @@ import { formatMs } from "./timeUtils.js";
 import type {
   Event,
   ParsedCsv,
-  Passage,
+  Passage as CsvPassage,
   Pilot,
   PilotPenalty,
   ResultRow,
@@ -12,6 +12,7 @@ import type {
   TestPart,
   TimingPoint,
 } from "./types.js";
+import { csvInputModeOf } from "./types.js";
 
 export const UNIFIED_SCOPE = "unified";
 /** Single shared penalty per pilot within a test (salida ↔ unificado) */
@@ -289,7 +290,8 @@ function rankLapRaw(rows: ResultRow[]): ResultRow[] {
 }
 
 function isLapScoring(part: TestPart): boolean {
-  return part.combinedMode && part.combinedScoring === "laps";
+  const mode = csvInputModeOf(part);
+  return (mode === "combined" || mode === "pilots") && part.combinedScoring === "laps";
 }
 
 export function isLapScoringPart(part: TestPart): boolean {
@@ -337,18 +339,21 @@ export function computeLapByLapResults(
     return {
       rows: [],
       maxLaps: 0,
-      warning: "Solo disponible para CSV único clasificado por vueltas.",
+      warning: "Solo disponible para CSV único o CSV por piloto clasificado por vueltas.",
     };
   }
 
-  const slot = part.csvs[0];
-  if (!slot) {
+  const slotParsed =
+    csvInputModeOf(part) === "pilots"
+      ? mergedPilotParsed(part, event.pilots || [])
+      : part.csvs[0]?.parsed;
+  if (!slotParsed) {
     return { rows: [], maxLaps: 0, warning: "No hay CSV cargado en esta parte." };
   }
 
   const pilots = event.pilots || [];
-  const summary = lapResultsByPilot(slot.parsed);
-  const lapDetails = lapDetailsByPilot(slot.parsed);
+  const summary = lapResultsByPilot(slotParsed);
+  const lapDetails = lapDetailsByPilot(slotParsed);
   const expected = part.expectedLaps ?? null;
 
   let rows: LapByLapRow[] = [];
@@ -428,13 +433,14 @@ function findPenalty(
 function lastValidPassageFromPart(
   part: TestPart | undefined,
   number: string
-): Passage | null {
+): CsvPassage | null {
   if (!part) return null;
   const key = normalizeNumber(number);
-  let best: Passage | null = null;
+  let best: CsvPassage | null = null;
   for (const slot of part.csvs || []) {
+    const slotPilot = slot.pilotNumber ? normalizeNumber(slot.pilotNumber) : "";
     for (const p of slot.parsed?.racePassages || []) {
-      if (normalizeNumber(p.number) !== key) continue;
+      if (normalizeNumber(p.number) !== key && slotPilot !== key) continue;
       if (
         !best ||
         p.tmPasosMs > best.tmPasosMs ||
@@ -454,11 +460,12 @@ function lastLapFromPart(
   const lastValid = lastValidPassageFromPart(part, number);
   if (!lastValid) return null;
 
-  let lastWithLap: Passage | null = null;
+  let lastWithLap: CsvPassage | null = null;
   const key = normalizeNumber(number);
   for (const slot of part?.csvs || []) {
+    const slotPilot = slot.pilotNumber ? normalizeNumber(slot.pilotNumber) : "";
     for (const p of slot.parsed?.racePassages || []) {
-      if (normalizeNumber(p.number) !== key) continue;
+      if (normalizeNumber(p.number) !== key && slotPilot !== key) continue;
       if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
       if (
         !lastWithLap ||
@@ -553,7 +560,7 @@ function earlierParts(test: Test, part: TestPart): TestPart[] {
   return ordered.slice(0, idx);
 }
 
-type Passage = { number: string; name: string; tm: number; lap: number | null };
+type LookbackPassage = { number: string; name: string; tm: number; lap: number | null };
 
 /** Look for start (Desde) in earlier salidas when current only has finish */
 function findEarlierFromPassage(
@@ -562,7 +569,7 @@ function findEarlierFromPassage(
   currentPart: TestPart,
   fromId: string,
   pilotKey: string
-): { passage: Passage; part: TestPart; point: TimingPoint | undefined } | null {
+): { passage: LookbackPassage; part: TestPart; point: TimingPoint | undefined } | null {
   const points = event.timingPoints;
   // Most recent earlier salida first (still closing the previous wave)
   for (const prev of [...earlierParts(test, currentPart)].reverse()) {
@@ -725,6 +732,137 @@ export function filterNewPilotsVsEarlier(
   };
 }
 
+function stampPassagesToPilot(
+  parsed: ParsedCsv,
+  number: string,
+  name: string
+): ParsedCsv {
+  const stamp = (p: CsvPassage): CsvPassage => ({
+    ...p,
+    number,
+    name: name || p.name,
+  });
+  return {
+    ...parsed,
+    passages: (parsed.passages || []).map(stamp),
+    racePassages: (parsed.racePassages || []).map(stamp),
+  };
+}
+
+function mergedPilotParsed(part: TestPart, pilots: Pilot[]): ParsedCsv | null {
+  const passages: CsvPassage[] = [];
+  const racePassages: CsvPassage[] = [];
+  const flags: ParsedCsv["flags"] = [];
+  for (const slot of part.csvs || []) {
+    const number = String(slot.pilotNumber || "").trim();
+    if (!number) continue;
+    const name = pilots.find((p) => normalizeNumber(p.number) === normalizeNumber(number))?.name || "";
+    const stamped = stampPassagesToPilot(slot.parsed, number, name);
+    passages.push(...(stamped.passages || []));
+    racePassages.push(...(stamped.racePassages || []));
+    flags.push(...(stamped.flags || []));
+  }
+  if (passages.length === 0 && racePassages.length === 0) return null;
+  return { filename: "pilotos", passages, racePassages, flags };
+}
+
+function computePilotCsvResults(
+  event: Event,
+  test: Test,
+  part: TestPart,
+  pilots: Pilot[],
+  scope: string
+): ResultsComputation {
+  const slots = (part.csvs || []).filter((s) => String(s.pilotNumber || "").trim());
+  if (slots.length === 0) {
+    return { rows: [], warning: "No hay CSV por piloto cargados en esta salida.", scope };
+  }
+
+  const workPart: TestPart = {
+    ...part,
+    csvs: slots.map((slot) => {
+      const number = String(slot.pilotNumber || "").trim();
+      const name =
+        pilots.find((p) => normalizeNumber(p.number) === normalizeNumber(number))?.name || "";
+      return {
+        ...slot,
+        parsed: stampPassagesToPilot(slot.parsed, number, name),
+      };
+    }),
+  };
+
+  if (isLapScoring(part)) {
+    const rows: ResultRow[] = [];
+    for (const slot of workPart.csvs) {
+      const byPilot = lapResultsByPilot(slot.parsed);
+      const p = [...byPilot.values()][0];
+      if (!p) continue;
+      rows.push(enrichLap(pilots, p.number, p.name, p.laps, p.totalTimeMs, workPart));
+    }
+    if (rows.length === 0) {
+      return {
+        rows: [],
+        warning: "No se encontraron vueltas completadas en los CSV por piloto.",
+        scope,
+      };
+    }
+    return { rows: applyPenalties(rankLapRaw(rows), test.penalties, scope, true), scope };
+  }
+
+  const complete: ResultRow[] = [];
+  const incomplete: ResultRow[] = [];
+  let nonPositive = 0;
+  for (const slot of workPart.csvs) {
+    const byPilot = combinedStartFinishByPilot(slot.parsed);
+    nonPositive += byPilot.nonPositive;
+    for (const p of byPilot.complete) {
+      complete.push(
+        enrich(
+          pilots,
+          p.number,
+          p.name,
+          p.timeMs,
+          p.via === "passages"
+            ? "CSV por piloto (Start → Finish)"
+            : "CSV por piloto (Tiempo de vuelta)",
+          workPart
+        )
+      );
+    }
+    for (const p of byPilot.incomplete) {
+      incomplete.push(
+        enrichIncomplete(
+          pilots,
+          p.number,
+          p.name,
+          "missing_finish",
+          "Start",
+          "Finish (2ª pasada)",
+          workPart
+        )
+      );
+    }
+  }
+  if (complete.length === 0 && incomplete.length === 0) {
+    return {
+      rows: [],
+      warning:
+        nonPositive > 0
+          ? "Hay pasadas, pero el tiempo Start→Finish salió ≤ 0. Revisa el CSV de cada piloto."
+          : "No se encontraron 2 pasadas (Start/Finish) ni tiempos de vuelta (> 0) en los CSV por piloto.",
+      scope,
+    };
+  }
+  return {
+    rows: mergeCompleteAndIncomplete(complete, incomplete, test.penalties, scope),
+    warning:
+      nonPositive > 0
+        ? `${nonPositive} piloto(s) con tiempo ≤ 0 entre 1ª y 2ª pasada.`
+        : undefined,
+    scope,
+  };
+}
+
 export function computePartResults(
   event: Event,
   test: Test,
@@ -736,7 +874,11 @@ export function computePartResults(
   const pilots = event.pilots || [];
   const scope = part.id;
 
-  if (part.combinedMode) {
+  if (csvInputModeOf(part) === "pilots") {
+    return computePilotCsvResults(event, test, part, pilots, scope);
+  }
+
+  if (part.combinedMode || csvInputModeOf(part) === "combined") {
     const slot = part.csvs[0];
     if (!slot) return { rows: [], warning: "No hay CSV cargado en esta parte.", scope };
 

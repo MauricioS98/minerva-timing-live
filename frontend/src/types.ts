@@ -41,6 +41,22 @@ export interface Passage {
 
 export type CombinedScoring = "time" | "laps";
 
+export type CsvInputMode = "points" | "combined" | "pilots";
+
+export function csvInputModeOf(part: {
+  csvInputMode?: CsvInputMode;
+  combinedMode?: boolean;
+}): CsvInputMode {
+  if (
+    part.csvInputMode === "pilots" ||
+    part.csvInputMode === "combined" ||
+    part.csvInputMode === "points"
+  ) {
+    return part.csvInputMode;
+  }
+  return part.combinedMode ? "combined" : "points";
+}
+
 export interface FlagEvent {
   type: string;
   tmPasosMs: number;
@@ -59,6 +75,7 @@ export interface PartCsvSlot {
   timingPointId: string;
   filename: string;
   parsed: ParsedCsv;
+  pilotNumber?: string;
 }
 
 /** One VS matchup in the start-order overlay (pilot numbers). */
@@ -72,6 +89,7 @@ export interface TestPart {
   name: string;
   order: number;
   combinedMode: boolean;
+  csvInputMode?: CsvInputMode;
   combinedScoring?: CombinedScoring;
   expectedLaps?: number | null;
   /** VS pairs for Orden de salida overlay */

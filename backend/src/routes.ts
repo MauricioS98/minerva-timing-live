@@ -18,6 +18,7 @@ import {
   DEFAULT_EVENT_PASSWORD,
 } from "./storage.js";
 import type {
+  CsvInputMode,
   Event,
   FusionRow,
   FusionTestMeta,
@@ -30,6 +31,24 @@ import type {
   TestTimingMode,
   TimingPoint,
 } from "./types.js";
+import { csvInputModeOf } from "./types.js";
+
+function parseCsvInputMode(raw: unknown): CsvInputMode | undefined {
+  const v = String(raw || "").trim();
+  if (v === "points" || v === "combined" || v === "pilots") return v;
+  return undefined;
+}
+
+function applyCsvInputMode(part: TestPart, mode: CsvInputMode): void {
+  part.csvInputMode = mode;
+  part.combinedMode = mode === "combined";
+  if (mode === "points") {
+    part.combinedScoring = undefined;
+    part.expectedLaps = null;
+  } else if (part.combinedScoring !== "laps" && part.combinedScoring !== "time") {
+    part.combinedScoring = "time";
+  }
+}
 
 function sanitizeStartOrderVs(raw: unknown): StartOrderVsPair[] {
   if (!Array.isArray(raw)) return [];
@@ -348,14 +367,23 @@ router.post("/events/:id/tests/:testId/parts", async (req, res) => {
   const test = getTest(event, req.params.testId);
   if (!test) return res.status(404).json({ error: "Prueba no encontrada" });
 
+  const csvMode =
+    parseCsvInputMode(req.body.csvInputMode) ||
+    (req.body.combinedMode ? "combined" : "points");
   const part: TestPart = {
     id: uuid(),
     name: req.body.name || `Salida ${test.parts.length + 1}`,
     order: test.parts.length,
-    combinedMode: Boolean(req.body.combinedMode),
-    combinedScoring: req.body.combinedMode ? req.body.combinedScoring || "time" : undefined,
+    combinedMode: csvMode === "combined",
+    csvInputMode: csvMode,
+    combinedScoring:
+      csvMode === "combined" || csvMode === "pilots"
+        ? req.body.combinedScoring === "laps"
+          ? "laps"
+          : "time"
+        : undefined,
     expectedLaps:
-      req.body.combinedMode && req.body.combinedScoring === "laps"
+      (csvMode === "combined" || csvMode === "pilots") && req.body.combinedScoring === "laps"
         ? req.body.expectedLaps === undefined || req.body.expectedLaps === ""
           ? null
           : Number(req.body.expectedLaps)
@@ -377,12 +405,11 @@ router.put("/events/:id/tests/:testId/parts/:partId", async (req, res) => {
   if (!part) return res.status(404).json({ error: "Parte no encontrada" });
 
   if (req.body.name != null) part.name = req.body.name;
-  if (req.body.combinedMode != null) {
-    part.combinedMode = Boolean(req.body.combinedMode);
-    if (!part.combinedMode) {
-      part.combinedScoring = undefined;
-      part.expectedLaps = null;
-    }
+  const csvMode = parseCsvInputMode(req.body.csvInputMode);
+  if (csvMode) {
+    applyCsvInputMode(part, csvMode);
+  } else if (req.body.combinedMode != null) {
+    applyCsvInputMode(part, Boolean(req.body.combinedMode) ? "combined" : "points");
   }
   if (req.body.combinedScoring != null) {
     part.combinedScoring = req.body.combinedScoring === "laps" ? "laps" : "time";
@@ -402,6 +429,7 @@ router.put("/events/:id/tests/:testId/parts/:partId", async (req, res) => {
     const onlyVs =
       req.body.name == null &&
       req.body.combinedMode == null &&
+      req.body.csvInputMode == null &&
       req.body.combinedScoring == null &&
       req.body.expectedLaps === undefined;
     if (onlyVs) return res.json(part);
@@ -502,8 +530,14 @@ router.post(
     if (!ctx) return res.status(404).json({ error: "Parte no encontrada" });
     if (!req.file) return res.status(400).json({ error: "Archivo CSV requerido" });
 
+    const csvMode = csvInputModeOf(ctx);
     const timingPointId = String(req.body.timingPointId || "");
-    if (!timingPointId && !ctx.combinedMode) {
+    const pilotNumber = String(req.body.pilotNumber || "").trim();
+    if (csvMode === "pilots") {
+      if (!pilotNumber) {
+        return res.status(400).json({ error: "Selecciona el piloto para este CSV." });
+      }
+    } else if (!timingPointId && csvMode !== "combined") {
       return res.status(400).json({ error: "timingPointId requerido" });
     }
 
@@ -514,24 +548,36 @@ router.post(
       req.body.csvSource === "auto"
         ? req.body.csvSource
         : ctx.csvSource;
-    const parsed = parseTimingCsv(content, req.file.originalname, preference);
+    let parsed = parseTimingCsv(content, req.file.originalname, preference);
+    if (csvMode === "pilots" && pilotNumber) {
+      const stamp = <T extends { number: string }>(p: T): T => ({ ...p, number: pilotNumber });
+      parsed = {
+        ...parsed,
+        passages: (parsed.passages || []).map(stamp),
+        racePassages: (parsed.racePassages || []).map(stamp),
+      };
+    }
 
-    const slotId = ctx.combinedMode
-      ? ctx.firstTimingPointId || timingPointId || "combined"
-      : timingPointId;
+    const slotId =
+      csvMode === "combined" || csvMode === "pilots"
+        ? ctx.firstTimingPointId || timingPointId || "combined"
+        : timingPointId;
 
     const slot = {
       timingPointId: slotId,
       filename: req.file.originalname,
       parsed,
+      ...(csvMode === "pilots" ? { pilotNumber } : {}),
     };
 
     let combinedMode = ctx.combinedMode;
+    let csvInputMode = ctx.csvInputMode;
     let combinedScoring = ctx.combinedScoring;
     let metaChanged = false;
     const hasLaps = parsed.racePassages.some((p) => p.lapTimeMs != null && p.lapTimeMs > 0);
-    if (hasLaps && req.body.combinedMode === "true" && !combinedMode) {
+    if (hasLaps && req.body.combinedMode === "true" && csvMode === "points") {
       combinedMode = true;
+      csvInputMode = "combined";
       combinedScoring = combinedScoring ?? "time";
       metaChanged = true;
     }
@@ -543,6 +589,7 @@ router.post(
       metaChanged
         ? {
             combinedMode,
+            csvInputMode,
             combinedScoring: combinedScoring ?? null,
             expectedLaps: ctx.expectedLaps ?? null,
           }
@@ -555,6 +602,7 @@ router.post(
       slot: {
         timingPointId: slot.timingPointId,
         filename: slot.filename,
+        pilotNumber: slot.pilotNumber,
         parsed: {
           filename: parsed.filename,
           passages: parsed.racePassages,
@@ -569,6 +617,7 @@ router.post(
         name: ctx.partName,
         order: ctx.partOrder,
         combinedMode,
+        csvInputMode,
         combinedScoring,
         expectedLaps: ctx.expectedLaps,
       },
@@ -1286,7 +1335,7 @@ router.get("/events/:id/tests/:testId/export/:format", async (req, res) => {
       if (!part) return res.status(404).json({ error: "Parte no encontrada" });
       if (!isLapScoringPart(part)) {
         return res.status(400).json({
-          error: "La exportación vuelta a vuelta solo está disponible con CSV único por vueltas.",
+          error: "La exportación vuelta a vuelta solo está disponible con CSV único o CSV por piloto clasificado por vueltas.",
         });
       }
       const lapSuffix =
