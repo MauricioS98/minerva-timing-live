@@ -302,7 +302,7 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
-              <span><span className="pm-txt">Dif.</span></span>
+              <span><span className="pm-txt">Diferencia</span></span>
             </div>
             <div className="pm-table-body" aria-label="Tabla de posiciones">
               {rowsReady &&
@@ -328,7 +328,7 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
-              <span><span className="pm-txt">Dif.</span></span>
+              <span><span className="pm-txt">Diferencia</span></span>
             </div>
             <div className="pm-table-body" aria-label="Tabla de posiciones">
               {rowsReady &&
