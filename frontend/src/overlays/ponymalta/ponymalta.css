@@ -94,25 +94,31 @@
 }
 
 .pm-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 78px;
   overflow: hidden;
   background: var(--pm-red);
 }
 
 .pm-brand-logo {
-  /* Source PNG is 1920×1080; red banner sits at ~0,26 482×86 */
+  /* Crop to CIRCUITO PONY MALTA artwork (~138–434 × 28–98) and center in the bar */
   display: block;
-  width: 482px;
-  height: 86px;
+  width: 320px;
+  height: 70px;
   max-width: none;
   object-fit: none;
-  object-position: 0 -26px;
+  object-position: -130px -30px;
   pointer-events: none;
-  transform: skewX(var(--pm-unskew)) scale(calc(var(--pm-brand-w) / 482px));
-  transform-origin: top left;
+  transform: skewX(var(--pm-unskew));
+  transform-origin: center center;
 }
 
 .pm-category {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 40px;
   overflow: hidden;
   background: #0058d4;
@@ -121,16 +127,16 @@
 }
 
 .pm-category-art {
-  /* Source PNG is 1920×1080; blue title bar sits at y=122, h≈39 */
+  /* Crop to MONTOYA vs MONTOYA artwork (~183–395 × 127–154) and center in the bar */
   display: block;
-  width: 428px;
-  height: 39px;
+  width: 238px;
+  height: 33px;
   max-width: none;
   object-fit: none;
-  object-position: 0 -122px;
+  object-position: -170px -124px;
   pointer-events: none;
-  transform: skewX(var(--pm-unskew)) scale(calc(var(--pm-brand-w) / 482px));
-  transform-origin: top left;
+  transform: skewX(var(--pm-unskew));
+  transform-origin: center center;
 }
 
 .pm-laps {
