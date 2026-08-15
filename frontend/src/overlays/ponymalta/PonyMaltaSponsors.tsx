@@ -8,18 +8,12 @@ export function PonyMaltaSponsors() {
           alt=""
           draggable={false}
         />
-        <span className="pm-sponsor-div" aria-hidden>
-          |
-        </span>
         <img
           className="pm-sponsor"
           src="/overlays/ponymalta/sponsor-alcaldia.png"
           alt=""
           draggable={false}
         />
-        <span className="pm-sponsor-div" aria-hidden>
-          |
-        </span>
         <img
           className="pm-sponsor"
           src="/overlays/ponymalta/sponsor-bavaria.png"
