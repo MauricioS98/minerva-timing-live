@@ -78,6 +78,7 @@ export function EventDetailPage() {
   const [unlocking, setUnlocking] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
+  const [overlayLiveSaving, setOverlayLiveSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -289,6 +290,29 @@ export function EventDetailPage() {
     setNewPassword2("");
     setMsg(pw ? "Evento actualizado (contraseña cambiada)" : "Evento actualizado");
     load();
+  };
+
+  const overlayLiveOn = event.overlayLiveRefresh !== false;
+
+  const toggleOverlayLive = async () => {
+    setOverlayLiveSaving(true);
+    setError("");
+    try {
+      const next = !overlayLiveOn;
+      const r = await api.setOverlayLive(event.id, next);
+      setEvent((prev) =>
+        prev ? { ...prev, overlayLiveRefresh: r.overlayLiveRefresh } : prev
+      );
+      setMsg(
+        r.overlayLiveRefresh
+          ? "Overlays en vivo: se actualizan cada 5 segundos."
+          : "Overlays pausados: se queda el último cuadro. Al reactivar se recargan al instante."
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cambiar la actualización del overlay");
+    } finally {
+      setOverlayLiveSaving(false);
+    }
   };
 
   const saveTimingPoints = async () => {
@@ -565,6 +589,19 @@ export function EventDetailPage() {
           </div>
         </div>
         <div className="page-head-actions">
+          <button
+            type="button"
+            className={`btn btn-overlay-live ${overlayLiveOn ? "is-on" : "is-off"}`}
+            disabled={overlayLiveSaving}
+            onClick={() => void toggleOverlayLive()}
+            title={
+              overlayLiveOn
+                ? "Los overlays recargan datos cada 5 segundos. Clic para pausar."
+                : "Overlays congelados en el último cuadro. Clic para reactivar."
+            }
+          >
+            {overlayLiveOn ? "Actualización overlay: On" : "Actualización overlay: Off"}
+          </button>
           <a
             className="btn btn-secondary"
             href={`/tablero/${event.id}`}
@@ -651,6 +688,8 @@ export function EventDetailPage() {
             <legend>Overlay de transmisión</legend>
             <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 0.55rem" }}>
               Elige qué gráfico usa la URL <code>/overlay/{event.id}</code> (OBS / vMix).
+              La recarga cada 5 segundos se enciende o apaga con el botón del encabezado
+              (Actualización overlay On/Off); no hace falta guardar este formulario.
             </p>
             <div className="overlay-variant-options">
               <label className="overlay-variant-option">

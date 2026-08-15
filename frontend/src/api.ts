@@ -71,6 +71,16 @@ export const api = {
     }),
   deleteEvent: (id: string) => request<{ ok: boolean }>(`/events/${id}`, { method: "DELETE" }),
 
+  getOverlayLive: (eventId: string) =>
+    request<{ overlayLiveRefresh: boolean }>(`/events/${eventId}/overlay-live`),
+
+  setOverlayLive: (eventId: string, overlayLiveRefresh: boolean) =>
+    request<{ overlayLiveRefresh: boolean }>(`/events/${eventId}/overlay-live`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ overlayLiveRefresh }),
+    }),
+
   unlockEvent: (id: string, password: string) =>
     request<{ ok: boolean }>(`/events/${id}/auth`, {
       method: "POST",

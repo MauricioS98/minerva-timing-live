@@ -211,6 +211,31 @@ button {
   color: var(--text-muted);
 }
 
+.btn-overlay-live {
+  min-width: 13.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-overlay-live.is-on {
+  background: #1a6b3c;
+  border-color: #2a8a52;
+  color: #ffffff;
+}
+
+.btn-overlay-live.is-on:hover {
+  background: #155a33;
+}
+
+.btn-overlay-live.is-off {
+  background: #4a4a4a;
+  border-color: #6a6a6a;
+  color: #ffffff;
+}
+
+.btn-overlay-live.is-off:hover {
+  background: #3d3d3d;
+}
+
 .btn-danger {
   background: var(--danger-soft);
   border-color: #6b322a;

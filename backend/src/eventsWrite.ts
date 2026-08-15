@@ -181,7 +181,20 @@ export async function updatePartStartOrderVs(
   );
 }
 
-/** Set the single published Orden de salida (null clears). */
+/** On/Off for overlay data polling without rewriting the whole event. */
+export async function updateOverlayLiveRefresh(
+  eventId: string,
+  live: boolean
+): Promise<void> {
+  await pool.query(
+    `UPDATE events
+     SET overlay_live_refresh = $2,
+         updated_at = now()
+     WHERE id = $1`,
+    [eventId, live]
+  );
+}
+
 export async function updatePublishedStartOrder(
   eventId: string,
   published: { testId: string; partId: string } | null
@@ -260,9 +273,10 @@ export async function persistEvent(event: Event): Promise<Event> {
       `INSERT INTO events (
         id, name, event_date, location, header_image, footer_text, password,
         theme_colors, board_page_seconds, overlay_variant, overlay_timing, csv_source,
+        overlay_live_refresh,
         published_start_order_test_id, published_start_order_part_id,
         created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::timestamptz,$16::timestamptz)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::timestamptz,$17::timestamptz)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         event_date = EXCLUDED.event_date,
@@ -275,6 +289,7 @@ export async function persistEvent(event: Event): Promise<Event> {
         overlay_variant = EXCLUDED.overlay_variant,
         overlay_timing = EXCLUDED.overlay_timing,
         csv_source = EXCLUDED.csv_source,
+        overlay_live_refresh = EXCLUDED.overlay_live_refresh,
         published_start_order_test_id = EXCLUDED.published_start_order_test_id,
         published_start_order_part_id = EXCLUDED.published_start_order_part_id,
         updated_at = EXCLUDED.updated_at`,
@@ -295,6 +310,7 @@ export async function persistEvent(event: Event): Promise<Event> {
         event.csvSource === "orbits4" || event.csvSource === "orbits5"
           ? event.csvSource
           : "auto",
+        event.overlayLiveRefresh !== false,
         event.publishedStartOrder?.testId ?? null,
         event.publishedStartOrder?.partId ?? null,
         event.createdAt,

@@ -149,4 +149,18 @@ export async function ensureDbSchema(): Promise<void> {
     await pool.query(fs.readFileSync(migPath, "utf8"));
     console.log("Migración overlay_variant ponymalta aplicada");
   }
+
+  const liveCol = await pool.query<{ attname: string }>(
+    `SELECT a.attname
+     FROM pg_attribute a
+     JOIN pg_class c ON a.attrelid = c.oid
+     JOIN pg_namespace n ON c.relnamespace = n.oid
+     WHERE n.nspname = 'public' AND c.relname = 'events'
+       AND a.attname = 'overlay_live_refresh' AND NOT a.attisdropped`
+  );
+  if (!liveCol.rows[0]) {
+    const migPath = path.resolve(__dirname, "../../db/10_overlay_live_refresh.sql");
+    await pool.query(fs.readFileSync(migPath, "utf8"));
+    console.log("Migración overlay_live_refresh aplicada");
+  }
 }

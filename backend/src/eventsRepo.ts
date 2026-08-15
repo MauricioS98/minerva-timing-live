@@ -65,6 +65,7 @@ function mapEventRow(row: Record<string, unknown>): Omit<
       row.csv_source === "orbits4" || row.csv_source === "orbits5"
         ? (row.csv_source as "orbits4" | "orbits5")
         : "auto",
+    overlayLiveRefresh: row.overlay_live_refresh !== false,
     publishedStartOrder:
       row.published_start_order_test_id && row.published_start_order_part_id
         ? {
@@ -485,6 +486,16 @@ export async function getPartUploadContext(
         ? (row.csv_source as "orbits4" | "orbits5")
         : "auto",
   };
+}
+
+export async function getOverlayLiveRefresh(eventId: string): Promise<boolean | null> {
+  const r = await q<{ overlay_live_refresh: boolean | null }>(
+    pool,
+    `SELECT overlay_live_refresh FROM events WHERE id = $1`,
+    [eventId]
+  );
+  if (!r.rows[0]) return null;
+  return r.rows[0].overlay_live_refresh !== false;
 }
 
 export async function listEventIds(): Promise<string[]> {

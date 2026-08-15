@@ -7,10 +7,12 @@ import {
   deleteEvent,
   getEvent,
   getPartUploadContext,
+  getOverlayLiveRefresh,
   HEADERS_DIR,
   listEvents,
   publicEvent,
   saveEvent,
+  saveOverlayLiveRefresh,
   savePartCsvSlot,
   savePartStartOrderVs,
   savePublishedStartOrder,
@@ -125,6 +127,7 @@ function emptyEvent(body: Partial<Event> & { password?: string }): Event {
     overlayVariant: "classic",
     overlayTiming: "splits",
     csvSource: "auto",
+    overlayLiveRefresh: true,
     publishedStartOrder: null,
     createdAt: now,
     updatedAt: now,
@@ -218,6 +221,10 @@ router.put("/events/:id", async (req, res) => {
         : existing.csvSource === "orbits4" || existing.csvSource === "orbits5"
           ? existing.csvSource
           : "auto",
+    overlayLiveRefresh:
+      req.body.overlayLiveRefresh !== undefined
+        ? Boolean(req.body.overlayLiveRefresh)
+        : existing.overlayLiveRefresh !== false,
     themeColors:
       req.body.themeColors === undefined
         ? existing.themeColors ?? null
@@ -225,6 +232,21 @@ router.put("/events/:id", async (req, res) => {
   };
   await saveEvent(updated);
   res.json(publicEvent(updated));
+});
+
+router.get("/events/:id/overlay-live", async (req, res) => {
+  const live = await getOverlayLiveRefresh(req.params.id);
+  if (live === null) return res.status(404).json({ error: "Evento no encontrado" });
+  res.json({ overlayLiveRefresh: live });
+});
+
+router.put("/events/:id/overlay-live", async (req, res) => {
+  const live = await saveOverlayLiveRefresh(
+    req.params.id,
+    req.body?.overlayLiveRefresh !== false && req.body?.overlayLiveRefresh !== "false"
+  );
+  if (live === null) return res.status(404).json({ error: "Evento no encontrado" });
+  res.json({ overlayLiveRefresh: live });
 });
 
 router.delete("/events/:id", async (req, res) => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
-import { useVisiblePoll } from "../../hooks/useVisiblePoll";
+import { useOverlayLivePoll } from "../../hooks/useOverlayLivePoll";
 import { LapByLapRow, LL_ROW_STAGGER_MS } from "./LapByLapRow";
 import { FlipValue } from "./FlipValue";
 import { useRowFlip } from "./useRowFlip";
@@ -71,7 +71,7 @@ export function LapByLapOverlayPage() {
     };
   }, []);
 
-  useVisiblePoll(load, refreshSec * 1000);
+  useOverlayLivePoll(id, load, refreshSec * 1000);
 
   return (
     <LapByLapOverlay

@@ -2,13 +2,19 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Event, PartCsvSlot, Pilot, StartOrderVsPair } from "./types.js";
-import { getPartUploadContext, loadAllEvents, loadEvent } from "./eventsRepo.js";
+import {
+  getOverlayLiveRefresh,
+  getPartUploadContext,
+  loadAllEvents,
+  loadEvent,
+} from "./eventsRepo.js";
 import {
   persistEvent,
   removeEvent,
   replacePartCsvs,
   updatePartCsvMeta,
   updatePartStartOrderVs,
+  updateOverlayLiveRefresh,
   updatePublishedStartOrder,
   upsertPartCsvSlot,
 } from "./eventsWrite.js";
@@ -70,6 +76,7 @@ function normalizeLoaded(event: Event): Event {
     event.csvSource === "orbits4" || event.csvSource === "orbits5"
       ? event.csvSource
       : "auto";
+  event.overlayLiveRefresh = event.overlayLiveRefresh !== false;
   event.publishedStartOrder =
     event.publishedStartOrder?.testId && event.publishedStartOrder?.partId
       ? {
@@ -242,6 +249,24 @@ export async function savePartStartOrderVs(
   } else {
     invalidateEventCache(eventId);
   }
+}
+
+export { getOverlayLiveRefresh };
+
+export async function saveOverlayLiveRefresh(
+  eventId: string,
+  live: boolean
+): Promise<boolean | null> {
+  const current = await getOverlayLiveRefresh(eventId);
+  if (current === null) return null;
+  await updateOverlayLiveRefresh(eventId, live);
+  const hit = eventCache.get(eventId);
+  if (hit) {
+    hit.event.overlayLiveRefresh = live;
+    hit.event.updatedAt = new Date().toISOString();
+    hit.at = Date.now();
+  }
+  return live;
 }
 
 /** Publish / clear the single active Orden de salida for the overlay. */

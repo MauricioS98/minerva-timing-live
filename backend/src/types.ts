@@ -242,6 +242,11 @@ export interface Event {
   /** Overlay times: sector traps + total, or total only */
   overlayTiming?: "splits" | "total";
   /**
+   * When true, overlay browser sources reload board/lap data on their interval
+   * (default 5s). When false they keep the last loaded frame.
+   */
+  overlayLiveRefresh?: boolean;
+  /**
    * CSV reader for Orbits exports.
    * auto = detect from headers (Borrado → Orbits 5; sin Borrado → Orbits 4).
    */

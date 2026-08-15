@@ -183,6 +183,8 @@ export interface Event {
   overlayVariant?: "classic" | "redbull" | "ponymalta";
   /** Overlay: 3 times (trayectos + total) or total only */
   overlayTiming?: "splits" | "total";
+  /** true = overlays recargan datos cada 5s; false = se queda el último cuadro */
+  overlayLiveRefresh?: boolean;
   /**
    * Lectura de CSV Orbits: auto (detecta Borrado), orbits5 (columna Borrado),
    * orbits4 (Vueltas sin incrementar = borrada).
