@@ -8,7 +8,8 @@ import { useRowFlip } from "./useRowFlip";
 import { PonyMaltaSponsors } from "./PonyMaltaSponsors";
 import "./ponymalta.css";
 
-const PAGE_SIZE = 8;
+const PILOT_PAGE_SIZE = 8;
+const LAPS_PER_PAGE = 8;
 const PAGE_EXIT_MS = 280;
 const PANEL_EASE_MS = 600;
 
@@ -19,8 +20,20 @@ type LapViewRow = {
   laps: string[];
 };
 
-function membershipKey(rows: LapViewRow[]): string {
-  return rows.map((r) => r.key).join("|");
+function membershipKey(rows: LapViewRow[], lapPage: number): string {
+  return `${lapPage}:${rows.map((r) => r.key).join("|")}`;
+}
+
+function decodeScreen(screen: number, lapPages: number, pilotPages: number) {
+  const lp = Math.max(1, lapPages);
+  const pp = Math.max(1, pilotPages);
+  const count = lp * pp;
+  const s = ((screen % count) + count) % count;
+  return {
+    screen: s,
+    pilotPage: Math.floor(s / lp) % pp,
+    lapPage: s % lp,
+  };
 }
 
 export function LapByLapOverlayPage() {
@@ -98,10 +111,13 @@ function LapByLapOverlay({
   pageHoldSeconds: number;
 }) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
-  const lapsShown = Math.max(1, maxLaps);
+  const totalLaps = Math.max(1, maxLaps);
+  const lapsShown = Math.min(LAPS_PER_PAGE, totalLaps);
   const lapCol = Math.max(118, Math.min(148, Math.floor((1620 - 76 - 280) / lapsShown)));
 
-  const pageCount = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE) || 1);
+  const pilotPageCount = Math.max(1, Math.ceil(allRows.length / PILOT_PAGE_SIZE) || 1);
+  const lapPageCount = Math.max(1, Math.ceil(totalLaps / LAPS_PER_PAGE));
+  const screenCount = pilotPageCount * lapPageCount;
   const [page, setPage] = useState(0);
   const [exiting, setExiting] = useState(false);
   const [panelIn, setPanelIn] = useState(false);
@@ -112,16 +128,32 @@ function LapByLapOverlay({
   const [scale, setScale] = useState(1);
   const pageRef = useRef(0);
   const allRowsRef = useRef(allRows);
-  const pageCountRef = useRef(pageCount);
+  const screenCountRef = useRef(screenCount);
+  const lapPageCountRef = useRef(lapPageCount);
+  const pilotPageCountRef = useRef(pilotPageCount);
   allRowsRef.current = allRows;
-  pageCountRef.current = pageCount;
+  screenCountRef.current = screenCount;
+  lapPageCountRef.current = lapPageCount;
+  pilotPageCountRef.current = pilotPageCount;
 
-  const safePage = ((page % pageCount) + pageCount) % pageCount;
-  const livePageRows = useMemo(
-    () => allRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [allRows, safePage]
+  const { screen: safePage, pilotPage: safePilotPage, lapPage: safeLapPage } = decodeScreen(
+    page,
+    lapPageCount,
+    pilotPageCount
   );
-  const liveMemberKey = useMemo(() => membershipKey(livePageRows), [livePageRows]);
+  const lapOffset = safeLapPage * LAPS_PER_PAGE;
+  const livePageRows = useMemo(
+    () =>
+      allRows.slice(
+        safePilotPage * PILOT_PAGE_SIZE,
+        safePilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
+      ),
+    [allRows, safePilotPage]
+  );
+  const liveMemberKey = useMemo(
+    () => membershipKey(livePageRows, safeLapPage),
+    [livePageRows, safeLapPage]
+  );
   const [displayRows, setDisplayRows] = useState<LapViewRow[]>([]);
   const membershipRef = useRef("");
   const bodyRef = useRowFlip(liveMemberKey, rowsReady && !exiting);
@@ -169,20 +201,25 @@ function LapByLapOverlay({
   }, [liveMemberKey, livePageRows, exiting]);
 
   useEffect(() => {
-    if (!rowsReady || pageCount <= 1 || displayRows.length === 0) return;
+    if (!rowsReady || screenCount <= 1 || displayRows.length === 0) return;
     const buildMs = displayRows.length * LL_ROW_STAGGER_MS + 350;
     let swapTimer: number | null = null;
     const hold = window.setTimeout(() => {
       setExiting(true);
       swapTimer = window.setTimeout(() => {
-        const count = Math.max(1, pageCountRef.current);
+        const count = Math.max(1, screenCountRef.current);
         const next = (pageRef.current + 1) % count;
         pageRef.current = next;
-        const nextRows = allRowsRef.current.slice(
-          next * PAGE_SIZE,
-          next * PAGE_SIZE + PAGE_SIZE
+        const decoded = decodeScreen(
+          next,
+          lapPageCountRef.current,
+          pilotPageCountRef.current
         );
-        membershipRef.current = membershipKey(nextRows);
+        const nextRows = allRowsRef.current.slice(
+          decoded.pilotPage * PILOT_PAGE_SIZE,
+          decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
+        );
+        membershipRef.current = membershipKey(nextRows, decoded.lapPage);
         setDisplayRows(nextRows);
         setPage(next);
         setAnimGen((g) => g + 1);
@@ -193,14 +230,14 @@ function LapByLapOverlay({
       window.clearTimeout(hold);
       if (swapTimer != null) window.clearTimeout(swapTimer);
     };
-  }, [pageCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs]);
+  }, [screenCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs]);
 
   useEffect(() => {
-    if (page >= pageCount) {
+    if (page >= screenCount) {
       pageRef.current = 0;
       setPage(0);
     }
-  }, [page, pageCount]);
+  }, [page, screenCount]);
 
   const gridTemplate = `76px 280px repeat(${lapsShown}, ${lapCol}px)`;
   const boardWidth = 76 + 280 + lapsShown * lapCol;
@@ -260,11 +297,14 @@ function LapByLapOverlay({
             <span>
               <span className="pm-txt">NOMBRE</span>
             </span>
-            {Array.from({ length: lapsShown }, (_, i) => (
-              <span key={i}>
-                <span className="pm-txt">{i + 1}</span>
-              </span>
-            ))}
+            {Array.from({ length: lapsShown }, (_, i) => {
+              const lapNum = lapOffset + i + 1;
+              return (
+                <span key={lapNum}>
+                  <span className="pm-txt">{lapNum <= totalLaps ? String(lapNum) : ""}</span>
+                </span>
+              );
+            })}
           </div>
           <div className="pm-table-body" ref={bodyRef} aria-label={title || "Tiempos vuelta a vuelta"}>
             {rowsReady &&
@@ -274,7 +314,7 @@ function LapByLapOverlay({
                   flipKey={r.key}
                   position={r.position}
                   name={r.name}
-                  laps={r.laps}
+                  laps={r.laps.slice(lapOffset, lapOffset + lapsShown)}
                   maxLaps={lapsShown}
                   enterIndex={i}
                   visible={rowsReady}
