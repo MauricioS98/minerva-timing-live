@@ -232,20 +232,24 @@ function LapByLapOverlay({
           <header className="pm-head">
             <div className="pm-brand-stack">
               <div className="pm-brand">
-                <img
-                  className="pm-brand-logo"
-                  src="/overlays/ponymalta/header-logo.png"
-                  alt=""
-                  draggable={false}
-                />
+                <div className="pm-brand-logo-clip">
+                  <img
+                    className="pm-brand-logo"
+                    src="/overlays/ponymalta/header-logo.png"
+                    alt=""
+                    draggable={false}
+                  />
+                </div>
               </div>
               <div className="pm-category">
-                <img
-                  className="pm-category-art"
-                  src="/overlays/ponymalta/montoya-vs-montoya.png"
-                  alt=""
-                  draggable={false}
-                />
+                <div className="pm-category-art-clip">
+                  <img
+                    className="pm-category-art"
+                    src="/overlays/ponymalta/montoya-vs-montoya.png"
+                    alt=""
+                    draggable={false}
+                  />
+                </div>
               </div>
             </div>
             <div className="pm-laps">
