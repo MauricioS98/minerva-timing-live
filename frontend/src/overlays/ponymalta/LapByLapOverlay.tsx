@@ -236,14 +236,12 @@ function LapByLapOverlay({
           <header className="pm-head">
             <div className="pm-brand-stack">
               <div className="pm-brand">
-                <div className="pm-brand-logo-clip">
-                  <img
-                    className="pm-brand-logo"
-                    src="/overlays/ponymalta/header-logo.png"
-                    alt=""
-                    draggable={false}
-                  />
-                </div>
+                <img
+                  className="pm-brand-logo"
+                  src="/overlays/ponymalta/brand-circuito-horizontal.png"
+                  alt=""
+                  draggable={false}
+                />
               </div>
               <PonyMaltaSponsors />
             </div>

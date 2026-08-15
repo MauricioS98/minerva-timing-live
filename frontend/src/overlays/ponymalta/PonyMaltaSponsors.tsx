@@ -4,7 +4,7 @@ export function PonyMaltaSponsors() {
       <div className="pm-sponsors">
         <img
           className="pm-sponsor"
-          src="/overlays/ponymalta/sponsor-circuito.png"
+          src="/overlays/ponymalta/sponsor-pony-malta.png"
           alt=""
           draggable={false}
         />
