@@ -3,6 +3,8 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useVisiblePoll } from "../../hooks/useVisiblePoll";
 import { LapByLapRow, LL_ROW_STAGGER_MS } from "./LapByLapRow";
+import { FlipValue } from "./FlipValue";
+import { useRowFlip } from "./useRowFlip";
 import "./ponymalta.css";
 
 const PAGE_SIZE = 8;
@@ -121,6 +123,7 @@ function LapByLapOverlay({
   const liveMemberKey = useMemo(() => membershipKey(livePageRows), [livePageRows]);
   const [displayRows, setDisplayRows] = useState<LapViewRow[]>([]);
   const membershipRef = useRef("");
+  const bodyRef = useRowFlip(liveMemberKey, rowsReady && !exiting);
 
   useEffect(() => {
     const apply = () => {
@@ -254,7 +257,9 @@ function LapByLapOverlay({
             </div>
             <div className="pm-laps">
               <span className="pm-txt pm-laps-label">VUELTAS</span>
-              <span className="pm-txt pm-laps-value">{leaderLaps}</span>
+              <span className="pm-laps-value">
+                <FlipValue value={String(leaderLaps)} animate={headerIn} />
+              </span>
             </div>
           </header>
 
@@ -271,11 +276,12 @@ function LapByLapOverlay({
               </span>
             ))}
           </div>
-          <div className="pm-table-body" aria-label={title || "Tiempos vuelta a vuelta"}>
+          <div className="pm-table-body" ref={bodyRef} aria-label={title || "Tiempos vuelta a vuelta"}>
             {rowsReady &&
               displayRows.map((r, i) => (
                 <LapByLapRow
                   key={r.key}
+                  flipKey={r.key}
                   position={r.position}
                   name={r.name}
                   laps={r.laps}

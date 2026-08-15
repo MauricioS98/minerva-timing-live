@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { FlipValue } from "./FlipValue";
 
 export const ROW_STAGGER_MS = 100;
 
 export type PonyMaltaRowProps = {
+  flipKey: string;
   position: number;
   name: string;
   time: string;
@@ -13,6 +15,7 @@ export type PonyMaltaRowProps = {
 };
 
 export function PonyMaltaRow({
+  flipKey,
   position,
   name,
   time,
@@ -23,8 +26,8 @@ export function PonyMaltaRow({
 }: PonyMaltaRowProps) {
   const [entered, setEntered] = useState(false);
   const [timeIn, setTimeIn] = useState(false);
-  const [flash, setFlash] = useState(false);
-  const prevTime = useRef(time);
+  const enterIndexRef = useRef(enterIndex);
+  if (!entered) enterIndexRef.current = enterIndex;
 
   useEffect(() => {
     if (!visible || exiting) {
@@ -32,24 +35,16 @@ export function PonyMaltaRow({
       setTimeIn(false);
       return;
     }
-    const rowDelay = enterIndex * ROW_STAGGER_MS;
+    const rowDelay = enterIndexRef.current * ROW_STAGGER_MS;
     const enterTimer = window.setTimeout(() => setEntered(true), rowDelay);
     const timeTimer = window.setTimeout(() => setTimeIn(true), rowDelay + 150);
     return () => {
       window.clearTimeout(enterTimer);
       window.clearTimeout(timeTimer);
     };
-  }, [visible, exiting, enterIndex]);
+  }, [visible, exiting]);
 
-  useEffect(() => {
-    if (prevTime.current === time) return;
-    const hadValue = Boolean(prevTime.current);
-    prevTime.current = time;
-    if (!hadValue || !entered) return;
-    setFlash(true);
-    const t = window.setTimeout(() => setFlash(false), 220);
-    return () => window.clearTimeout(t);
-  }, [time, entered]);
+  const live = entered && !exiting;
 
   return (
     <div
@@ -61,18 +56,19 @@ export function PonyMaltaRow({
         .filter(Boolean)
         .join(" ")}
       data-pos={position}
+      data-flip-key={flipKey}
     >
       <span className="pm-row-pos">
-        <span className="pm-txt">{position}</span>
+        <FlipValue value={String(position)} animate={live} />
       </span>
       <span className="pm-row-name">
         <span className="pm-txt pm-row-name-wipe">{(name || "—").toUpperCase()}</span>
       </span>
-      <span className={`pm-row-time${timeIn ? " pm-row-time--in" : ""}${flash ? " pm-row-time--flash" : ""}`}>
-        <span className="pm-txt">{time}</span>
+      <span className={`pm-row-time${timeIn ? " pm-row-time--in" : ""}`}>
+        <FlipValue value={time} animate={live && timeIn} />
       </span>
       <span className={`pm-row-gap${timeIn ? " pm-row-gap--in" : ""}`}>
-        {gap ? <span className="pm-txt">{gap}</span> : null}
+        <FlipValue value={gap} animate={live && timeIn} />
       </span>
     </div>
   );

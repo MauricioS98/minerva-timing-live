@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { FlipValue } from "./FlipValue";
 
 export const LL_ROW_STAGGER_MS = 100;
 
 export type LapByLapRowProps = {
+  flipKey: string;
   position: number;
   name: string;
   laps: string[];
@@ -13,6 +15,7 @@ export type LapByLapRowProps = {
 };
 
 export function LapByLapRow({
+  flipKey,
   position,
   name,
   laps,
@@ -23,8 +26,8 @@ export function LapByLapRow({
 }: LapByLapRowProps) {
   const [entered, setEntered] = useState(false);
   const [timesIn, setTimesIn] = useState(false);
-  const [flashKey, setFlashKey] = useState("");
-  const prevSignature = useRef(laps.join("|"));
+  const enterIndexRef = useRef(enterIndex);
+  if (!entered) enterIndexRef.current = enterIndex;
 
   useEffect(() => {
     if (!visible || exiting) {
@@ -32,29 +35,16 @@ export function LapByLapRow({
       setTimesIn(false);
       return;
     }
-    const rowDelay = enterIndex * LL_ROW_STAGGER_MS;
+    const rowDelay = enterIndexRef.current * LL_ROW_STAGGER_MS;
     const enterTimer = window.setTimeout(() => setEntered(true), rowDelay);
     const timeTimer = window.setTimeout(() => setTimesIn(true), rowDelay + 150);
     return () => {
       window.clearTimeout(enterTimer);
       window.clearTimeout(timeTimer);
     };
-  }, [visible, exiting, enterIndex]);
+  }, [visible, exiting]);
 
-  useEffect(() => {
-    const signature = laps.join("|");
-    if (prevSignature.current === signature) return;
-    const hadValue = Boolean(prevSignature.current);
-    prevSignature.current = signature;
-    if (!hadValue || !entered) return;
-    const last = laps.filter(Boolean).at(-1) || "";
-    if (!last) return;
-    setFlashKey(last + ":" + laps.length);
-    const t = window.setTimeout(() => setFlashKey(""), 220);
-    return () => window.clearTimeout(t);
-  }, [laps, entered]);
-
-  const lastIdx = laps.reduce((acc, t, i) => (t ? i : acc), -1);
+  const live = entered && !exiting;
 
   return (
     <div
@@ -66,24 +56,22 @@ export function LapByLapRow({
         .filter(Boolean)
         .join(" ")}
       data-pos={position}
+      data-flip-key={flipKey}
     >
       <span className="pm-row-pos">
-        <span className="pm-txt">{position}</span>
+        <FlipValue value={String(position)} animate={live} />
       </span>
       <span className="pm-row-name">
         <span className="pm-txt pm-row-name-wipe">{(name || "—").toUpperCase()}</span>
       </span>
       {Array.from({ length: maxLaps }, (_, i) => {
         const time = laps[i] || "";
-        const flash = Boolean(flashKey) && i === lastIdx;
         return (
           <span
             key={i}
-            className={`pm-row-time pm-ll-lap${timesIn ? " pm-row-time--in" : ""}${
-              flash ? " pm-row-time--flash" : ""
-            }`}
+            className={`pm-row-time pm-ll-lap${timesIn ? " pm-row-time--in" : ""}`}
           >
-            {time ? <span className="pm-txt">{time}</span> : null}
+            <FlipValue value={time} animate={live && timesIn} />
           </span>
         );
       })}

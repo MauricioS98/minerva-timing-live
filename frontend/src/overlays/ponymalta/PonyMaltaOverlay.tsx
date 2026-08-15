@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FusionRow, ResultRow } from "../../types";
 import { PonyMaltaRow, ROW_STAGGER_MS } from "./PonyMaltaRow";
+import { FlipValue } from "./FlipValue";
+import { useRowFlip } from "./useRowFlip";
 import "./ponymalta.css";
 
 const PAGE_SIZE = 8;
@@ -170,6 +172,7 @@ export function PonyMaltaOverlay({
   const liveMemberKey = useMemo(() => membershipKey(livePageRows), [livePageRows]);
   const [displayRows, setDisplayRows] = useState<ViewRow[]>([]);
   const membershipRef = useRef("");
+  const bodyRef = useRowFlip(liveMemberKey, rowsReady && !exiting);
 
   useEffect(() => {
     const apply = () => {
@@ -298,7 +301,9 @@ export function PonyMaltaOverlay({
               </div>
               <div className="pm-laps">
                 <span className="pm-txt pm-laps-label">VUELTA</span>
-                <span className="pm-txt pm-laps-value">{laps}</span>
+                <span className="pm-laps-value">
+                  <FlipValue value={laps} animate={headerIn} />
+                </span>
               </div>
             </header>
 
@@ -308,11 +313,12 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
               <span><span className="pm-txt">DIFERENCIA</span></span>
             </div>
-            <div className="pm-table-body" aria-label="Tabla de posiciones">
+            <div className="pm-table-body" ref={bodyRef} aria-label="Tabla de posiciones">
               {rowsReady &&
                 displayRows.map((r, i) => (
                   <PonyMaltaRow
                     key={r.key}
+                    flipKey={r.key}
                     position={r.position}
                     name={r.name}
                     time={r.time}
@@ -334,11 +340,12 @@ export function PonyMaltaOverlay({
               <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
               <span><span className="pm-txt">DIFERENCIA</span></span>
             </div>
-            <div className="pm-table-body" aria-label="Tabla de posiciones">
+            <div className="pm-table-body" ref={bodyRef} aria-label="Tabla de posiciones">
               {rowsReady &&
                 displayRows.map((r, i) => (
                   <PonyMaltaRow
                     key={r.key}
+                    flipKey={r.key}
                     position={r.position}
                     name={r.name}
                     time={r.time}
