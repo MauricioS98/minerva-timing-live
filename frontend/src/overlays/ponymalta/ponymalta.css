@@ -56,9 +56,12 @@
   position: absolute;
   left: 150px;
   top: 70px;
-  width: 1024px;
+  width: calc(var(--pm-pos-col) + var(--pm-name-col) + var(--pm-time-col) + var(--pm-gap-col));
+  --pm-pos-col: 76px;
+  --pm-name-col: 280px;
   --pm-time-col: 188px;
   --pm-gap-col: 124px;
+  --pm-brand-w: calc(var(--pm-pos-col) + var(--pm-name-col));
   background: transparent;
   transform: skewX(var(--pm-skew));
   transform-origin: top left;
@@ -76,7 +79,7 @@
 
 .pm-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--pm-time-col);
+  grid-template-columns: var(--pm-brand-w) var(--pm-time-col);
   width: calc(100% - var(--pm-gap-col));
   height: 118px;
   box-sizing: border-box;
@@ -98,12 +101,14 @@
 
 .pm-brand-logo {
   /* Source PNG is 1920×1080; red banner sits at ~0,26 482×86 */
-  width: 1920px;
-  height: 1080px;
+  display: block;
+  width: 482px;
+  height: 86px;
   max-width: none;
-  margin: -26px 0 0 0;
+  object-fit: none;
+  object-position: 0 -26px;
   pointer-events: none;
-  transform: skewX(var(--pm-unskew));
+  transform: skewX(var(--pm-unskew)) scale(calc(var(--pm-brand-w) / 482px));
   transform-origin: top left;
 }
 
@@ -117,12 +122,14 @@
 
 .pm-category-art {
   /* Source PNG is 1920×1080; blue title bar sits at y=122, h≈39 */
-  width: 1920px;
-  height: 1080px;
+  display: block;
+  width: 428px;
+  height: 39px;
   max-width: none;
-  margin: -122px 0 0 0;
+  object-fit: none;
+  object-position: 0 -122px;
   pointer-events: none;
-  transform: skewX(var(--pm-unskew));
+  transform: skewX(var(--pm-unskew)) scale(calc(var(--pm-brand-w) / 482px));
   transform-origin: top left;
 }
 
@@ -138,9 +145,9 @@
 }
 
 .pm-laps-label {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   color: #fff;
   line-height: 1;
 }
@@ -155,14 +162,14 @@
 .pm-table-head,
 .pm-row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) var(--pm-time-col) var(--pm-gap-col);
+  grid-template-columns: var(--pm-pos-col) var(--pm-name-col) var(--pm-time-col) var(--pm-gap-col);
   align-items: stretch;
   width: 100%;
   box-sizing: border-box;
 }
 
 .pm-table-head {
-  height: 38px;
+  height: 42px;
   border-top: 2px solid #fff;
   border-bottom: 2px solid #fff;
   background: #111;
@@ -178,10 +185,12 @@
 }
 
 .pm-table-head > span {
-  font-size: 15px;
-  letter-spacing: 0.06em;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  line-height: 1;
   color: #fff;
   padding: 0 10px;
+  white-space: nowrap;
 }
 
 .pm-table-head > span:nth-child(1),
@@ -193,7 +202,7 @@
 .pm-table-head > span:nth-child(2),
 .pm-row-name {
   padding-left: 16px;
-  padding-right: 36px;
+  padding-right: 22px;
   border-right: 2px solid #fff;
 }
 
