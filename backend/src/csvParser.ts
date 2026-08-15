@@ -154,7 +154,7 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
   skipped: number;
 } {
   const ordered = [...passages].sort(
-    (a, b) => a.tmPasosMs - b.tmPasosMs || a.rowIndex - b.rowIndex
+    (a, b) => a.rowIndex - b.rowIndex || a.tmPasosMs - b.tmPasosMs
   );
   const lastLaps = new Map<string, number>();
   const lastElapsed = new Map<string, number>();
@@ -213,9 +213,19 @@ export function extractRacePassages(passages: Passage[], flags: FlagEvent[]): Pa
   }
 
   const timeline = [
-    ...passages.map((p) => ({ kind: "passage" as const, ms: p.tmPasosMs, passage: p })),
-    ...flags.map((f) => ({ kind: "flag" as const, ms: f.tmPasosMs, flag: f })),
-  ].sort((a, b) => a.ms - b.ms || (a.kind === "flag" ? -1 : 1));
+    ...passages.map((p) => ({
+      kind: "passage" as const,
+      order: p.rowIndex,
+      ms: p.tmPasosMs,
+      passage: p,
+    })),
+    ...flags.map((f) => ({
+      kind: "flag" as const,
+      order: f.rowIndex,
+      ms: f.tmPasosMs,
+      flag: f,
+    })),
+  ].sort((a, b) => a.order - b.order || a.ms - b.ms || (a.kind === "flag" ? -1 : 1));
 
   const racePassages: Passage[] = [];
   let inRace = false;
