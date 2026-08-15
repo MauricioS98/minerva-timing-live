@@ -60,7 +60,7 @@
   --pm-pos-col: 76px;
   --pm-name-col: 280px;
   --pm-time-col: 188px;
-  --pm-gap-col: 124px;
+  --pm-gap-col: 164px;
   --pm-brand-w: calc(var(--pm-pos-col) + var(--pm-name-col));
   background: transparent;
   transform: skewX(var(--pm-skew));
@@ -295,7 +295,7 @@
 }
 
 .pm-row-gap .pm-txt {
-  font-size: 20px;
+  font-size: 24px;
   color: var(--pm-red);
   letter-spacing: -0.02em;
   text-transform: none;
