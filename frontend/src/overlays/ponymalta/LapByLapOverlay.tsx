@@ -249,7 +249,7 @@ function LapByLapOverlay({
               </div>
             </div>
             <div className="pm-laps">
-              <span className="pm-txt pm-laps-label">VUELTA</span>
+              <span className="pm-txt pm-laps-label">VUELTAS</span>
               <span className="pm-txt pm-laps-value">{leaderLaps}</span>
             </div>
           </header>

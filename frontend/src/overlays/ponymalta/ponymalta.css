@@ -310,8 +310,8 @@
 }
 
 .pm-ll-board .pm-head {
-  grid-template-columns: var(--pm-brand-w) var(--pm-lap-col, 148px);
-  width: calc(var(--pm-brand-w) + var(--pm-lap-col, 148px));
+  grid-template-columns: minmax(0, 1fr) var(--pm-lap-col, 148px);
+  width: 100%;
 }
 
 .pm-ll-board .pm-table-head,
