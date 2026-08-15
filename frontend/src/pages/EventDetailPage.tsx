@@ -1014,6 +1014,16 @@ export function EventDetailPage() {
                         <button className="btn btn-secondary btn-sm" onClick={() => addPart(test.id)}>
                           + Parte / salida
                         </button>
+                        {lapScoringPart(selectedPart) && selectedPart && (
+                          <a
+                            className="btn btn-ghost btn-sm"
+                            href={`/overlay/${event.id}/vuelta-a-vuelta?test=${test.id}&part=${selectedPart.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Ver overlay vuelta a vuelta
+                          </a>
+                        )}
                         <button
                           className="btn btn-danger btn-sm"
                           onClick={() => requestDeleteTest(test)}
@@ -1373,6 +1383,17 @@ export function EventDetailPage() {
                                 >
                                   Calcular resultado parcial
                                 </button>
+                                {lapScoringPart(selectedPart) && (
+                                  <a
+                                    className="btn btn-ghost"
+                                    href={`/overlay/${event.id}/vuelta-a-vuelta?test=${test.id}&part=${selectedPart.id}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ marginLeft: "0.5rem" }}
+                                  >
+                                    Ver overlay vuelta a vuelta
+                                  </a>
+                                )}
                                 <p className="muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0" }}>
                                   {csvMode === "combined" && selectedPart.combinedScoring !== "laps"
                                     ? "Start y Finish salen del mismo CSV (1ª y 2ª pasada). Si el CSV es acumulativo entre salidas, solo se listan pilotos nuevos."
@@ -1604,6 +1625,14 @@ export function EventDetailPage() {
                               ))}
                               {showLapByLapExport && (
                                 <>
+                                  <a
+                                    className="btn btn-ghost btn-sm"
+                                    href={`/overlay/${event.id}/vuelta-a-vuelta?test=${test.id}&part=${lapExportPartId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Ver overlay vuelta a vuelta
+                                  </a>
                                   <a
                                     className="btn btn-ghost btn-sm"
                                     href={api.exportUrl(event.id, test.id, "pdf-vueltas", {

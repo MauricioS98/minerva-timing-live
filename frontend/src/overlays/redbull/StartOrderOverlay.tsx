@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { useVisiblePoll } from "../../hooks/useVisiblePoll";
 import { pilotArtCandidates, RB_ASSETS } from "./pilotArt";
 import "./redbull.css";
 import "./start-order.css";
@@ -94,13 +95,7 @@ export function StartOrderOverlayPage() {
     };
   }, []);
 
-  useEffect(() => {
-    load().catch(() => undefined);
-    const t = window.setInterval(() => {
-      load().catch(() => undefined);
-    }, refreshSec * 1000);
-    return () => window.clearInterval(t);
-  }, [load, refreshSec]);
+  useVisiblePoll(load, refreshSec * 1000);
 
   // Same header entrance as Tabla de posiciones
   useEffect(() => {

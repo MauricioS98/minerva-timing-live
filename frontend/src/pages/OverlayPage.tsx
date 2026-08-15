@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { useVisiblePoll } from "../hooks/useVisiblePoll";
 import { hexToRgba, resolveThemeColors } from "../theme";
 import { ClassicOverlay } from "../overlays/ClassicOverlay";
 import { RedBullOverlay } from "../overlays/redbull/RedBullOverlay";
@@ -43,13 +44,7 @@ export function OverlayPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load().catch(() => undefined);
-    const timer = window.setInterval(() => {
-      load().catch(() => undefined);
-    }, refreshSec * 1000);
-    return () => window.clearInterval(timer);
-  }, [load, refreshSec]);
+  useVisiblePoll(load, refreshSec * 1000);
 
   const section: Section | null = useMemo(() => {
     if (!data || data.sections.length === 0) return null;

@@ -244,6 +244,28 @@ export const api = {
     }>(`/events/${eventId}/tests/${testId}/results?${q}`);
   },
 
+  getLapByLap: (eventId: string, testId: string, params: Record<string, string | undefined>) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) q.set(k, v);
+    });
+    return request<{
+      title: string;
+      maxLaps: number;
+      warning?: string | null;
+      eventName: string;
+      event: { id: string; name: string; boardPageSeconds?: number };
+      rows: {
+        position: number;
+        number: string;
+        name: string;
+        lapTimesFormatted: string[];
+        lapsCompleted: number;
+        totalTimeFormatted: string;
+      }[];
+    }>(`/events/${eventId}/tests/${testId}/laps?${q}`);
+  },
+
   getFusion: (eventId: string, testIds: string[]) => {
     const q = new URLSearchParams();
     q.set("tests", testIds.join(","));

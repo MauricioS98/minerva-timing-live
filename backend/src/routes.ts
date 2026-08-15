@@ -673,6 +673,48 @@ router.get("/events/:id/tests/:testId/results", async (req, res) => {
   });
 });
 
+router.get("/events/:id/tests/:testId/laps", async (req, res) => {
+  const event = await getEvent(req.params.id);
+  if (!event) return res.status(404).json({ error: "Evento no encontrado" });
+  const test = getTest(event, req.params.testId);
+  if (!test) return res.status(404).json({ error: "Prueba no encontrada" });
+
+  const partId = String(req.query.partId || "").trim();
+  if (!partId) return res.status(400).json({ error: "Indica la salida (partId)." });
+  const part = getPart(test, partId);
+  if (!part) return res.status(404).json({ error: "Parte no encontrada" });
+  if (!isLapScoringPart(part)) {
+    return res.status(400).json({
+      error: "El overlay vuelta a vuelta solo está disponible con CSV único o CSV por piloto clasificado por vueltas.",
+    });
+  }
+
+  const fromPointId = req.query.from as string | undefined;
+  const toPointId = req.query.to as string | undefined;
+  const { fromId, toId } = resolveTestTimingPoints(event, test, fromPointId, toPointId);
+  const { rows, maxLaps, warning } = computeLapByLapResults(event, test, part, fromId, toId);
+
+  res.json({
+    title: `${test.name} — ${part.name}`,
+    maxLaps,
+    warning: warning || null,
+    eventName: event.name,
+    event: {
+      id: event.id,
+      name: event.name,
+      boardPageSeconds: event.boardPageSeconds ?? 10,
+    },
+    rows: rows.map((r) => ({
+      position: r.position,
+      number: r.number,
+      name: r.name,
+      lapTimesFormatted: r.lapTimesFormatted,
+      lapsCompleted: r.lapsCompleted,
+      totalTimeFormatted: r.totalTimeFormatted,
+    })),
+  });
+});
+
 router.get("/events/:id/fusion", async (req, res) => {
   const event = await getEvent(req.params.id);
   if (!event) return res.status(404).json({ error: "Evento no encontrado" });

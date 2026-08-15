@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, API_BASE, UPLOADS_BASE, absoluteApiUrl, formatPenaltyInput } from "../api";
+import { useVisiblePoll } from "../hooks/useVisiblePoll";
 import { resolveThemeColors } from "../theme";
 import type { FusionRow, ResultRow } from "../types";
 import type { CSSProperties } from "react";
@@ -260,17 +261,7 @@ export function PublicBoardPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load().catch(() => undefined);
-  }, [load]);
-
-  useEffect(() => {
-    if (!id) return;
-    const timer = window.setInterval(() => {
-      load().catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [id, load]);
+  useVisiblePoll(load, 5000);
 
   const pageSeconds = Math.min(
     120,
