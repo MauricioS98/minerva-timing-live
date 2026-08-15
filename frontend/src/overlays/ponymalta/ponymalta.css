@@ -74,7 +74,7 @@
 
 .pm-board--in {
   opacity: 1;
-  clip-path: inset(0 -40px 0 0);
+  clip-path: inset(-24px -96px -24px -24px);
 }
 
 .pm-head {
@@ -83,7 +83,7 @@
   width: calc(100% - var(--pm-gap-col));
   height: 118px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pm-brand-stack {
@@ -153,10 +153,11 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 10px 8px 8px;
+  padding: 10px 20px 8px 12px;
   box-sizing: border-box;
   background: #111;
   text-align: center;
+  overflow: visible;
 }
 
 .pm-laps-label {
@@ -172,7 +173,7 @@
   line-height: 0.85;
   color: var(--pm-red);
   margin-top: 6px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pm-table-head,
@@ -198,7 +199,7 @@
   align-items: center;
   min-width: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pm-table-head > span {
@@ -226,14 +227,14 @@
 .pm-table-head > span:nth-child(3),
 .pm-row-time {
   justify-content: center;
-  padding: 0 8px;
+  padding: 0 16px;
   border-right: 2px solid #fff;
 }
 
 .pm-table-head > span:nth-child(4),
 .pm-row-gap {
   justify-content: center;
-  padding: 0 28px 0 10px;
+  padding: 0 32px 0 14px;
   overflow: visible;
 }
 
@@ -302,9 +303,10 @@
 .pm-flip {
   display: inline-block;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   vertical-align: middle;
   line-height: 1;
+  padding: 0 4px;
 }
 
 .pm-flip-out {
@@ -351,14 +353,14 @@
 .pm-ll-board .pm-table-head > span:nth-child(n + 3),
 .pm-ll-lap {
   justify-content: center;
-  padding: 0 6px;
+  padding: 0 14px;
   border-right: 2px solid #fff;
 }
 
 .pm-ll-board .pm-table-head > span:last-child,
 .pm-ll-row > span:last-child {
   border-right: 0;
-  padding-right: 28px;
+  padding-right: 32px;
   overflow: visible;
 }
 
