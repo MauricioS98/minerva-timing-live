@@ -3,6 +3,7 @@ import type { FusionRow, ResultRow } from "../../types";
 import { PonyMaltaRow, ROW_STAGGER_MS } from "./PonyMaltaRow";
 import { FlipValue } from "./FlipValue";
 import { useRowFlip } from "./useRowFlip";
+import { PonyMaltaSponsors } from "./PonyMaltaSponsors";
 import "./ponymalta.css";
 
 const PAGE_SIZE = 8;
@@ -288,16 +289,7 @@ export function PonyMaltaOverlay({
                     />
                   </div>
                 </div>
-                <div className="pm-category">
-                  <div className="pm-category-art-clip">
-                    <img
-                      className="pm-category-art"
-                      src="/overlays/ponymalta/montoya-vs-montoya.png"
-                      alt=""
-                      draggable={false}
-                    />
-                  </div>
-                </div>
+                <PonyMaltaSponsors />
               </div>
               <div className="pm-laps">
                 <span className="pm-txt pm-laps-label">VUELTA</span>

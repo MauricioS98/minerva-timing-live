@@ -5,6 +5,7 @@ import { useVisiblePoll } from "../../hooks/useVisiblePoll";
 import { LapByLapRow, LL_ROW_STAGGER_MS } from "./LapByLapRow";
 import { FlipValue } from "./FlipValue";
 import { useRowFlip } from "./useRowFlip";
+import { PonyMaltaSponsors } from "./PonyMaltaSponsors";
 import "./ponymalta.css";
 
 const PAGE_SIZE = 8;
@@ -244,16 +245,7 @@ function LapByLapOverlay({
                   />
                 </div>
               </div>
-              <div className="pm-category">
-                <div className="pm-category-art-clip">
-                  <img
-                    className="pm-category-art"
-                    src="/overlays/ponymalta/montoya-vs-montoya.png"
-                    alt=""
-                    draggable={false}
-                  />
-                </div>
-              </div>
+              <PonyMaltaSponsors />
             </div>
             <div className="pm-laps">
               <span className="pm-txt pm-laps-label">VUELTAS</span>

@@ -1,0 +1,32 @@
+export function PonyMaltaSponsors() {
+  return (
+    <div className="pm-category">
+      <div className="pm-sponsors">
+        <img
+          className="pm-sponsor"
+          src="/overlays/ponymalta/sponsor-circuito.png"
+          alt=""
+          draggable={false}
+        />
+        <span className="pm-sponsor-div" aria-hidden>
+          |
+        </span>
+        <img
+          className="pm-sponsor"
+          src="/overlays/ponymalta/sponsor-alcaldia.png"
+          alt=""
+          draggable={false}
+        />
+        <span className="pm-sponsor-div" aria-hidden>
+          |
+        </span>
+        <img
+          className="pm-sponsor"
+          src="/overlays/ponymalta/sponsor-bavaria.png"
+          alt=""
+          draggable={false}
+        />
+      </div>
+    </div>
+  );
+}

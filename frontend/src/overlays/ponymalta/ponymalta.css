@@ -102,8 +102,7 @@
   background: var(--pm-red);
 }
 
-.pm-brand-logo-clip,
-.pm-category-art-clip {
+.pm-brand-logo-clip {
   overflow: hidden;
   flex-shrink: 0;
   transform: skewX(var(--pm-unskew));
@@ -124,19 +123,6 @@
   margin: -30px 0 0 -130px;
 }
 
-.pm-category-art-clip {
-  width: 238px;
-  height: 33px;
-}
-
-.pm-category-art {
-  display: block;
-  width: 1920px;
-  height: 1080px;
-  max-width: none;
-  margin: -124px 0 0 -170px;
-}
-
 .pm-category {
   display: flex;
   align-items: center;
@@ -146,6 +132,38 @@
   background: #0058d4;
   box-sizing: border-box;
   min-width: 0;
+}
+
+.pm-sponsors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 12px;
+  box-sizing: border-box;
+  transform: skewX(var(--pm-unskew));
+}
+
+.pm-sponsor {
+  display: block;
+  height: 28px;
+  width: auto;
+  max-width: 34%;
+  object-fit: contain;
+  flex: 0 1 auto;
+}
+
+.pm-sponsor-div {
+  flex: 0 0 auto;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  opacity: 0.95;
 }
 
 .pm-laps {
