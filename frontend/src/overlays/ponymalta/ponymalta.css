@@ -56,12 +56,14 @@
   position: absolute;
   left: 150px;
   top: 70px;
-  width: calc(var(--pm-pos-col) + var(--pm-name-col) + var(--pm-time-col) + var(--pm-gap-col));
+  /* Same horizontal size as vuelta a vuelta with 2 lap columns */
   --pm-pos-col: 76px;
-  --pm-name-col: 280px;
+  --pm-name-col: 428px;
   --pm-time-col: 188px;
-  --pm-gap-col: 196px;
+  --pm-gap-col: 188px;
+  --pm-lap-col: 188px;
   --pm-brand-w: calc(var(--pm-pos-col) + var(--pm-name-col));
+  width: calc(var(--pm-pos-col) + var(--pm-name-col) + var(--pm-time-col) + var(--pm-gap-col));
   background: transparent;
   transform: skewX(var(--pm-skew));
   transform-origin: top left;
@@ -104,7 +106,7 @@
 
 .pm-brand-logo {
   display: block;
-  width: 320px;
+  width: 400px;
   height: auto;
   max-height: 72px;
   object-fit: contain;
@@ -342,8 +344,8 @@
 }
 
 .pm-ll-board .pm-head {
-  grid-template-columns: minmax(0, 1fr) var(--pm-lap-col, 148px);
-  width: 100%;
+  grid-template-columns: var(--pm-brand-w) var(--pm-lap-col);
+  width: calc(var(--pm-brand-w) + var(--pm-lap-col));
 }
 
 .pm-ll-board .pm-table-head,

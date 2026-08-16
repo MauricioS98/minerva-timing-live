@@ -12,6 +12,9 @@ const PILOT_PAGE_SIZE = 2;
 const LAPS_PER_PAGE = 8;
 const PAGE_EXIT_MS = 280;
 const PANEL_EASE_MS = 600;
+const PM_POS_COL = 76;
+const PM_NAME_COL = 428;
+const PM_LAP_COL = 188;
 
 type LapViewRow = {
   key: string;
@@ -122,7 +125,10 @@ function LapByLapOverlay({
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const totalLaps = Math.max(1, maxLaps);
   const lapsShown = Math.min(LAPS_PER_PAGE, totalLaps);
-  const lapCol = Math.max(118, Math.min(148, Math.floor((1620 - 76 - 280) / lapsShown)));
+  const lapCol = Math.max(
+    118,
+    Math.min(PM_LAP_COL, Math.floor((1620 - PM_POS_COL - PM_NAME_COL) / lapsShown))
+  );
 
   const pilotPageCount = Math.max(1, Math.ceil(allRows.length / PILOT_PAGE_SIZE) || 1);
   const lapPageCount = Math.max(1, Math.ceil(totalLaps / LAPS_PER_PAGE));
@@ -274,8 +280,8 @@ function LapByLapOverlay({
     }
   }, [page, screenCount, pagingMode]);
 
-  const gridTemplate = `76px 280px repeat(${lapsShown}, ${lapCol}px)`;
-  const boardWidth = 76 + 280 + lapsShown * lapCol;
+  const gridTemplate = `${PM_POS_COL}px ${PM_NAME_COL}px repeat(${lapsShown}, ${lapCol}px)`;
+  const boardWidth = PM_POS_COL + PM_NAME_COL + lapsShown * lapCol;
   const leaderLaps = allRows[0]?.laps.filter(Boolean).length || maxLaps || "";
 
   if (error && allRows.length === 0) {
@@ -301,6 +307,8 @@ function LapByLapOverlay({
           }`}
           style={{
             width: boardWidth,
+            ["--pm-pos-col" as string]: `${PM_POS_COL}px`,
+            ["--pm-name-col" as string]: `${PM_NAME_COL}px`,
             ["--pm-lap-col" as string]: `${lapCol}px`,
             ["--pm-ll-cols" as string]: gridTemplate,
           }}
