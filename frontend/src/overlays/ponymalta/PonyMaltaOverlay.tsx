@@ -39,12 +39,14 @@ function isFusionRow(r: ResultRow | FusionRow): r is FusionRow {
   return "totalTimeFormatted" in r;
 }
 
-function lastLapDisplay(r: ResultRow | FusionRow): string {
+function lastLapDisplay(r: ResultRow | FusionRow, lapScoring: boolean): string {
   if (isFusionRow(r)) return r.totalTimeFormatted;
-  if (r.lastLapFormatted) return r.lastLapFormatted;
-  const segs = (r.segments || []).filter((s) => s.timeFormatted);
-  if (segs.length > 0) return segs[segs.length - 1].timeFormatted;
-  return r.timeFormatted || "—";
+  if (lapScoring) {
+    if (r.lastLapFormatted) return r.lastLapFormatted;
+    const segs = (r.segments || []).filter((s) => s.timeFormatted);
+    if (segs.length > 0) return segs[segs.length - 1].timeFormatted;
+  }
+  return r.timeFormatted || r.lastLapFormatted || "—";
 }
 
 /** Por vueltas: más vueltas, luego menor tiempo total. Nunca por última vuelta. */
@@ -83,12 +85,18 @@ function rowTotalMs(r: ResultRow | FusionRow): number {
 }
 
 /** Gap to leader: +x v, +xx.xxx s, or +xx:xx.xxx m. Empty for P1. */
-function formatDelta(row: ResultRow | FusionRow, leader: ResultRow | FusionRow): string {
+function formatDelta(
+  row: ResultRow | FusionRow,
+  leader: ResultRow | FusionRow,
+  lapScoring: boolean
+): string {
   if (row === leader) return "";
-  const leaderLaps = rowLaps(leader);
-  const laps = rowLaps(row);
-  if (leaderLaps > 0 && laps < leaderLaps) {
-    return `+${leaderLaps - laps} v`;
+  if (lapScoring) {
+    const leaderLaps = rowLaps(leader);
+    const laps = rowLaps(row);
+    if (leaderLaps > 0 && laps < leaderLaps) {
+      return `+${leaderLaps - laps} v`;
+    }
   }
   const gapMs = rowTotalMs(row) - rowTotalMs(leader);
   if (!Number.isFinite(gapMs) || gapMs <= 0) return "";
@@ -103,14 +111,14 @@ function formatDelta(row: ResultRow | FusionRow, leader: ResultRow | FusionRow):
   return `+${String(min).padStart(2, "0")}:${int.padStart(2, "0")}.${frac} m`;
 }
 
-function toViewRows(rows: (ResultRow | FusionRow)[]): ViewRow[] {
+function toViewRows(rows: (ResultRow | FusionRow)[], lapScoring: boolean): ViewRow[] {
   const leader = rows[0];
   return rows.map((r) => ({
     key: String(r.number || `p${r.position}`),
     position: r.position,
     name: r.name || "—",
-    time: lastLapDisplay(r),
-    gap: leader ? formatDelta(r, leader) : "",
+    time: lastLapDisplay(r, lapScoring),
+    gap: leader ? formatDelta(r, leader, lapScoring) : "",
   }));
 }
 
@@ -140,14 +148,15 @@ export function PonyMaltaOverlay({
   remotePage = 0,
 }: PonyMaltaOverlayProps) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
+  const lapScoring =
+    !!section &&
+    (section.lapScoring === true ||
+      (section.lapScoring !== false && section.rows.some(isLapScoringRow)));
   const allRows = useMemo(() => {
     if (!section) return [] as ViewRow[];
-    const lapScoring =
-      section.lapScoring === true ||
-      (section.lapScoring !== false && section.rows.some(isLapScoringRow));
     const ranked = rankStandings(section.rows, lapScoring);
-    return toViewRows(ranked.slice(0, top));
-  }, [section, top]);
+    return toViewRows(ranked.slice(0, top), lapScoring);
+  }, [section, top, lapScoring]);
 
   const laps = useMemo(
     () => (section ? lapsLabel(section.rows) : ""),
@@ -325,7 +334,7 @@ export function PonyMaltaOverlay({
             <div className="pm-table-head">
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
-              <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
+              <span><span className="pm-txt">{lapScoring ? "ÚLTIMA VUELTA" : "MEJOR VUELTA"}</span></span>
               <span><span className="pm-txt">DIFERENCIA</span></span>
             </div>
             <div className="pm-table-body" ref={bodyRef} aria-label="Tabla de posiciones">
@@ -352,7 +361,7 @@ export function PonyMaltaOverlay({
             <div className="pm-table-head">
               <span><span className="pm-txt">POS.</span></span>
               <span><span className="pm-txt">NOMBRE</span></span>
-              <span><span className="pm-txt">ÚLTIMA VUELTA</span></span>
+              <span><span className="pm-txt">{lapScoring ? "ÚLTIMA VUELTA" : "MEJOR VUELTA"}</span></span>
               <span><span className="pm-txt">DIFERENCIA</span></span>
             </div>
             <div className="pm-table-body" ref={bodyRef} aria-label="Tabla de posiciones">

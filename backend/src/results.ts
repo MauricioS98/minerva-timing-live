@@ -390,6 +390,37 @@ function parsedListFromPart(
   return out;
 }
 
+function fastestLapRows(
+  part: TestPart,
+  event: Event,
+  pilots: Pilot[],
+  label: string
+): ResultRow[] {
+  const best = new Map<string, { number: string; name: string; timeMs: number }>();
+  for (const parsed of parsedListFromPart(part, event)) {
+    for (const p of parsed.racePassages || []) {
+      if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
+      const key = normalizeNumber(p.number);
+      const prev = best.get(key);
+      if (!prev || p.lapTimeMs < prev.timeMs) {
+        best.set(key, {
+          number: p.number,
+          name: pickName(p.name, prev?.name),
+          timeMs: p.lapTimeMs,
+        });
+      }
+    }
+  }
+  return [...best.values()].map((p) => {
+    const row = enrich(pilots, p.number, p.name, p.timeMs, label, part);
+    return {
+      ...row,
+      lastLapMs: p.timeMs,
+      lastLapFormatted: formatMs(p.timeMs),
+    };
+  });
+}
+
 function isTimePrefix(short: string[], long: string[]): boolean {
   if (short.length === 0 || short.length > long.length) return false;
   return short.every((t, i) => t === long[i]);
@@ -943,6 +974,14 @@ function computePilotCsvResults(
     return { rows: applyPenalties(rankLapRaw(rows), test.penalties, scope, true), scope };
   }
 
+  const fastest = fastestLapRows(workPart, event, pilots, "CSV por piloto (mejor vuelta)");
+  if (fastest.length > 0) {
+    return {
+      rows: mergeCompleteAndIncomplete(fastest, [], test.penalties, scope),
+      scope,
+    };
+  }
+
   const complete: ResultRow[] = [];
   const incomplete: ResultRow[] = [];
   let nonPositive = 0;
@@ -1031,6 +1070,14 @@ export function computePartResults(
         };
       }
       return { rows: applyPenalties(rankLapRaw(rows), test.penalties, scope, true), scope };
+    }
+
+    const fastest = fastestLapRows(part, event, pilots, "CSV único (mejor vuelta)");
+    if (fastest.length > 0) {
+      return {
+        rows: mergeCompleteAndIncomplete(fastest, [], test.penalties, scope),
+        scope,
+      };
     }
 
     const byPilot = combinedStartFinishByPilot(slot.parsed);

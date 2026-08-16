@@ -1442,9 +1442,9 @@ export function EventDetailPage() {
                                 )}
                                 <p className="muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0" }}>
                                   {csvMode === "combined" && selectedPart.combinedScoring !== "laps"
-                                    ? "Start y Finish salen del mismo CSV (1ª y 2ª pasada). Si el CSV es acumulativo entre salidas, solo se listan pilotos nuevos."
+                                    ? "Por tiempo: posiciones por la vuelta más rápida. Si cargas varios CSV, se unen todos los pilotos."
                                     : csvMode === "pilots"
-                                      ? "Cada archivo corresponde a un piloto. Por tiempo: 1ª pasada = Start y 2ª = Finish. Por vueltas: más vueltas en menor tiempo total."
+                                      ? "Cada archivo corresponde a un piloto. Por tiempo: vuelta más rápida. Por vueltas: más vueltas en menor tiempo total."
                                       : "Si el CSV es acumulativo, solo se listan pilotos nuevos respecto a salidas anteriores."}
                                 </p>
                               </div>
@@ -1460,7 +1460,7 @@ export function EventDetailPage() {
 
                         <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 0.5rem" }}>
                           {csvMode === "combined"
-                            ? "Esta salida usa CSV único: Start y Finish se leen del mismo archivo."
+                            ? "Esta salida usa CSV único. Por tiempo se clasifica por la vuelta más rápida."
                             : csvMode === "pilots"
                               ? "Esta salida usa un CSV por piloto. El ranking une todos los archivos cargados."
                               : "Configura cómo se miden los tiempos en esta prueba. La fusión usa esta configuración de cada prueba por separado."}
@@ -1479,10 +1479,9 @@ export function EventDetailPage() {
                                 </p>
                               ) : (
                                 <p>
-                                  Por tiempo: la <strong>1ª pasada</strong> es la salida y la{" "}
-                                  <strong>2ª</strong> la llegada
-                                  {csvMode === "pilots" ? " (un CSV por piloto)" : " (mismo CSV)"}. Si
-                                  solo hay una pasada con Tiempo de vuelta &gt; 0, se usa ese valor.
+                                  Por tiempo: gana la <strong>vuelta más rápida</strong>
+                                  {csvMode === "pilots" ? " de cada CSV por piloto" : ""}. La
+                                  diferencia es contra esa mejor vuelta del líder.
                                 </p>
                               )}
                             </div>
