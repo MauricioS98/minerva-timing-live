@@ -1,5 +1,5 @@
 import { normalizeNumber } from "./storage.js";
-import { formatMs } from "./timeUtils.js";
+import { formatMs, parseTimeToMs } from "./timeUtils.js";
 import type {
   Event,
   ParsedCsv,
@@ -328,6 +328,104 @@ function lapDetailsByPilot(
   return map;
 }
 
+function mergedPointParsed(
+  part: TestPart,
+  event: Event,
+  test: Test,
+  fromPointId?: string,
+  toPointId?: string
+): ParsedCsv | null {
+  const slots = (part.csvs || []).filter((s) => s.parsed);
+  if (slots.length === 0) return null;
+
+  const { fromId, toId } = resolveTestTimingPoints(event, test, fromPointId, toPointId);
+  const preferred = [test.startFinishPointId, toId, fromId].filter(Boolean) as string[];
+
+  const lapCount = (parsed: ParsedCsv) =>
+    (parsed.racePassages || []).filter((p) => p.lapTimeMs != null && p.lapTimeMs > 0).length;
+
+  let best = slots[0];
+  let bestScore = -1;
+  for (const slot of slots) {
+    const pref = preferred.indexOf(slot.timingPointId || "");
+    const score = lapCount(slot.parsed) * 1000 + (pref === -1 ? 0 : 100 - pref);
+    if (score > bestScore) {
+      bestScore = score;
+      best = slot;
+    }
+  }
+  return best.parsed;
+}
+
+function parsedForLapByLap(
+  part: TestPart,
+  event: Event,
+  test: Test,
+  fromPointId?: string,
+  toPointId?: string
+): ParsedCsv | null {
+  const mode = csvInputModeOf(part);
+  if (mode === "pilots") return mergedPilotParsed(part, event.pilots || []);
+  if (mode === "combined") return part.csvs[0]?.parsed ?? null;
+  return mergedPointParsed(part, event, test, fromPointId, toPointId);
+}
+
+/** If Orbits didn't fill Tiempo de vuelta, build laps from successive hits. */
+function lapDetailsFromSuccessiveHits(
+  parsed: ParsedCsv
+): Map<string, { lapTimeFormatted: string; clockFormatted: string }[]> {
+  const map = new Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>();
+  const byPilot = new Map<string, typeof parsed.racePassages>();
+  for (const p of parsed.racePassages || []) {
+    const key = normalizeNumber(p.number);
+    if (!byPilot.has(key)) byPilot.set(key, []);
+    byPilot.get(key)!.push(p);
+  }
+  for (const [key, list] of byPilot) {
+    const ordered = [...list].sort(
+      (a, b) => a.rowIndex - b.rowIndex || a.tmPasosMs - b.tmPasosMs
+    );
+    const details: { lapTimeFormatted: string; clockFormatted: string }[] = [];
+    for (let i = 1; i < ordered.length; i++) {
+      const ms = ordered[i].tmPasosMs - ordered[i - 1].tmPasosMs;
+      if (ms <= 0) continue;
+      details.push({
+        lapTimeFormatted: formatMs(ms),
+        clockFormatted: ordered[i].tmPasosRaw?.trim() || formatMs(ordered[i].tmPasosMs, true),
+      });
+    }
+    if (details.length > 0) map.set(key, details);
+  }
+  return map;
+}
+
+function summaryFromLapDetails(
+  parsed: ParsedCsv,
+  details: Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>
+): Map<string, LapPilotResult> {
+  const first = new Map<string, { number: string; name: string }>();
+  for (const p of parsed.racePassages || []) {
+    const key = normalizeNumber(p.number);
+    if (!first.has(key)) first.set(key, { number: p.number, name: p.name });
+  }
+  const result = new Map<string, LapPilotResult>();
+  for (const [key, laps] of details) {
+    const meta = first.get(key);
+    if (!meta || laps.length === 0) continue;
+    const totalTimeMs = laps.reduce((sum, d) => {
+      const ms = parseTimeToMs(d.lapTimeFormatted) || 0;
+      return sum + ms;
+    }, 0);
+    result.set(key, {
+      number: meta.number,
+      name: meta.name,
+      laps: laps.length,
+      totalTimeMs,
+    });
+  }
+  return result;
+}
+
 export function computeLapByLapResults(
   event: Event,
   test: Test,
@@ -335,25 +433,18 @@ export function computeLapByLapResults(
   fromPointId?: string,
   toPointId?: string
 ): { rows: LapByLapRow[]; maxLaps: number; warning?: string } {
-  if (!isLapScoring(part)) {
-    return {
-      rows: [],
-      maxLaps: 0,
-      warning: "Solo disponible para CSV único o CSV por piloto clasificado por vueltas.",
-    };
-  }
-
-  const slotParsed =
-    csvInputModeOf(part) === "pilots"
-      ? mergedPilotParsed(part, event.pilots || [])
-      : part.csvs[0]?.parsed;
+  const slotParsed = parsedForLapByLap(part, event, test, fromPointId, toPointId);
   if (!slotParsed) {
     return { rows: [], maxLaps: 0, warning: "No hay CSV cargado en esta parte." };
   }
 
   const pilots = event.pilots || [];
-  const summary = lapResultsByPilot(slotParsed);
-  const lapDetails = lapDetailsByPilot(slotParsed);
+  let summary = lapResultsByPilot(slotParsed);
+  let lapDetails = lapDetailsByPilot(slotParsed);
+  if (summary.size === 0) {
+    lapDetails = lapDetailsFromSuccessiveHits(slotParsed);
+    summary = summaryFromLapDetails(slotParsed, lapDetails);
+  }
   const expected = part.expectedLaps ?? null;
 
   let rows: LapByLapRow[] = [];
@@ -385,8 +476,10 @@ export function computeLapByLapResults(
     fromId,
     toId
   );
-  const allowed = new Set(filteredPartRows.map((r) => normalizeNumber(r.number)));
-  rows = rows.filter((r) => allowed.has(normalizeNumber(r.number)));
+  if (filteredPartRows.length > 0) {
+    const allowed = new Set(filteredPartRows.map((r) => normalizeNumber(r.number)));
+    rows = rows.filter((r) => allowed.has(normalizeNumber(r.number)));
+  }
 
   rows.sort((a, b) => {
     if (b.lapsCompleted !== a.lapsCompleted) return b.lapsCompleted - a.lapsCompleted;

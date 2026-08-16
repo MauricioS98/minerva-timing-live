@@ -713,11 +713,6 @@ router.get("/events/:id/tests/:testId/laps", async (req, res) => {
   if (!partId) return res.status(400).json({ error: "Indica la salida (partId)." });
   const part = getPart(test, partId);
   if (!part) return res.status(404).json({ error: "Parte no encontrada" });
-  if (!isLapScoringPart(part)) {
-    return res.status(400).json({
-      error: "El overlay vuelta a vuelta solo está disponible con CSV único o CSV por piloto clasificado por vueltas.",
-    });
-  }
 
   const fromPointId = req.query.from as string | undefined;
   const toPointId = req.query.to as string | undefined;
@@ -1405,11 +1400,6 @@ router.get("/events/:id/tests/:testId/export/:format", async (req, res) => {
       }
       const part = getPart(test, partId);
       if (!part) return res.status(404).json({ error: "Parte no encontrada" });
-      if (!isLapScoringPart(part)) {
-        return res.status(400).json({
-          error: "La exportación vuelta a vuelta solo está disponible con CSV único o CSV por piloto clasificado por vueltas.",
-        });
-      }
       const lapSuffix =
         format === "pdf-vueltas-horas" ? "Vuelta a vuelta con horas" : "Vuelta a vuelta";
       const lapTitle = `${title} — ${lapSuffix}`;

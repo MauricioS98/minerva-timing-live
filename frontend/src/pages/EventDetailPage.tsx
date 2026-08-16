@@ -1004,17 +1004,7 @@ export function EventDetailPage() {
               const resultPart = testResults?.partId
                 ? test.parts.find((p) => p.id === testResults.partId)
                 : undefined;
-              const lapScoringPart = (p: TestPart | undefined) =>
-                Boolean(
-                  p &&
-                    (csvInputModeOf(p) === "combined" || csvInputModeOf(p) === "pilots") &&
-                    p.combinedScoring === "laps"
-                );
-              const lapExportPartId = lapScoringPart(resultPart)
-                ? resultPart!.id
-                : lapScoringPart(selectedPart)
-                  ? selectedPartId
-                  : undefined;
+              const lapExportPartId = resultPart?.id || selectedPartId;
               const showLapByLapExport = Boolean(
                 lapExportPartId && testResults && testResults.rows.length > 0
               );
@@ -1053,7 +1043,7 @@ export function EventDetailPage() {
                         <button className="btn btn-secondary btn-sm" onClick={() => addPart(test.id)}>
                           + Parte / salida
                         </button>
-                        {lapScoringPart(selectedPart) && selectedPart && (
+                        {selectedPart && (
                           <a
                             className="btn btn-ghost btn-sm"
                             href={`/overlay/${event.id}/vuelta-a-vuelta?test=${test.id}&part=${selectedPart.id}`}
@@ -1422,7 +1412,7 @@ export function EventDetailPage() {
                                 >
                                   Calcular resultado parcial
                                 </button>
-                                {lapScoringPart(selectedPart) && (
+                                {selectedPart && (
                                   <a
                                     className="btn btn-ghost"
                                     href={`/overlay/${event.id}/vuelta-a-vuelta?test=${test.id}&part=${selectedPart.id}`}
