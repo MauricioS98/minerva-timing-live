@@ -368,6 +368,28 @@ function lapDetailsByPilot(
 
 type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
 
+/**
+ * Unique-CSV dumps of one heat often still pick up another car's transponder
+ * (empty Nombre). Those hits must not become extra laps for that number.
+ */
+function dropUnnamedStrayPassages(parsed: ParsedCsv): ParsedCsv {
+  const named = new Set<string>();
+  for (const p of parsed.racePassages || []) {
+    if (String(p.name || "").trim() && String(p.number || "").trim()) {
+      named.add(normalizeNumber(p.number));
+    }
+  }
+  if (named.size === 0) return parsed;
+  const keep = (p: { number: string }) => named.has(normalizeNumber(p.number));
+  return {
+    ...parsed,
+    racePassages: (parsed.racePassages || []).filter(keep),
+    passages: (parsed.passages || []).filter(
+      (p) => !String(p.number || "").trim() || keep(p)
+    ),
+  };
+}
+
 function parsedListFromPart(
   part: TestPart,
   event: Event
@@ -377,14 +399,16 @@ function parsedListFromPart(
     const merged = mergedPilotParsed(part, event.pilots || []);
     if (merged) out.push(merged);
     for (const s of part.csvs || []) {
-      if (s.parsed && !String(s.pilotNumber || "").trim()) out.push(s.parsed);
+      if (s.parsed && !String(s.pilotNumber || "").trim()) {
+        out.push(dropUnnamedStrayPassages(s.parsed));
+      }
     }
     return out;
   }
   for (const s of part.csvs || []) {
     if (!s.parsed) continue;
     const n = String(s.pilotNumber || "").trim();
-    out.push(n ? isolatePilotCsv(s.parsed, n) : s.parsed);
+    out.push(n ? isolatePilotCsv(s.parsed, n) : dropUnnamedStrayPassages(s.parsed));
   }
   return out;
 }
@@ -433,6 +457,10 @@ function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
   if (aTimes.length === 0) return b;
   if (isTimePrefix(aTimes, bTimes)) return b;
   if (isTimePrefix(bTimes, aTimes)) return a;
+  if (aTimes.length >= bTimes.length) {
+    const tail = aTimes.slice(aTimes.length - bTimes.length);
+    if (tail.every((t, i) => t === bTimes[i])) return a;
+  }
   return [...a, ...b];
 }
 
@@ -559,7 +587,7 @@ export function computeLapByLapResults(
     r.position = i + 1;
   });
 
-  const maxLaps = Math.max(expected ?? 0, ...rows.map((r) => r.lapTimesFormatted.length), 0);
+  const maxLaps = Math.max(0, ...rows.map((r) => r.lapTimesFormatted.length));
   if (maxLaps > 0) {
     for (const r of rows) {
       while (r.lapTimesFormatted.length < maxLaps) r.lapTimesFormatted.push("");
