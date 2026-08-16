@@ -6,7 +6,7 @@ import { useRowFlip } from "./useRowFlip";
 import { PonyMaltaSponsors } from "./PonyMaltaSponsors";
 import "./ponymalta.css";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 2;
 const PAGE_EXIT_MS = 280;
 const PANEL_EASE_MS = 600;
 
