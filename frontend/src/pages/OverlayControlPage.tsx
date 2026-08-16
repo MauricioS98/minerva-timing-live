@@ -68,9 +68,17 @@ export function OverlayControlPage() {
     setEvent(ev);
     setBoard(bd);
     const firstTest = ev.tests[0];
-    const firstPart = firstTest?.parts[0];
-    setTestId((prev) => prev || firstTest?.id || "");
-    setPartId((prev) => prev || firstPart?.id || "");
+    const boardEntry = bd.sections?.[bd.sections.length - 1]?.entry;
+    const boardTest = boardEntry?.refId
+      ? ev.tests.find((t) => t.id === boardEntry.refId)
+      : firstTest;
+    const boardPartId =
+      boardEntry?.partId ||
+      boardTest?.parts[boardTest.parts.length - 1]?.id ||
+      firstTest?.parts[firstTest.parts.length - 1]?.id ||
+      firstTest?.parts[0]?.id;
+    setTestId((prev) => prev || boardTest?.id || firstTest?.id || "");
+    setPartId((prev) => prev || boardPartId || "");
   }, [id]);
 
   useEffect(() => {

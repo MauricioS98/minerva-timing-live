@@ -405,8 +405,34 @@ function parsedForLapByLap(
 ): ParsedCsv | null {
   const mode = csvInputModeOf(part);
   if (mode === "pilots") return mergedPilotParsed(part, event.pilots || []);
-  if (mode === "combined") return combinedCsvSlot(part)?.parsed ?? null;
+  if (mode === "combined") return combinedCsvSlot(resolveCombinedLapPart(test, part))?.parsed ?? null;
   return mergedPointParsed(part, event, test, fromPointId, toPointId);
+}
+
+/**
+ * CSV único is often re-uploaded as a later salida (same race, more laps).
+ * OBS links stay on the first part; standings already pick the dump with more laps.
+ */
+function resolveCombinedLapPart(test: Test, part: TestPart): TestPart {
+  let best = part;
+  let bestScore = combinedLapScore(part);
+  for (const p of test.parts || []) {
+    if (csvInputModeOf(p) !== "combined") continue;
+    const score = combinedLapScore(p);
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
+}
+
+function combinedLapScore(part: TestPart): number {
+  const parsed = combinedCsvSlot(part)?.parsed;
+  if (!parsed) return -1;
+  const passages = parsed.racePassages || [];
+  const maxLaps = passages.reduce((m, p) => Math.max(m, p.lapsCount ?? 0), 0);
+  return maxLaps * 100_000 + lapHitCount(parsed) * 1000 + passages.length;
 }
 
 /** If Orbits didn't fill Tiempo de vuelta, build laps from successive hits. */
@@ -478,11 +504,28 @@ export function computeLapByLapResults(
   }
 
   const pilots = event.pilots || [];
-  let summary = lapResultsByPilot(slotParsed);
   let lapDetails = lapDetailsByPilot(slotParsed);
-  if (summary.size === 0) {
-    lapDetails = lapDetailsFromSuccessiveHits(slotParsed);
-    summary = summaryFromLapDetails(slotParsed, lapDetails);
+  const successive = lapDetailsFromSuccessiveHits(slotParsed);
+  for (const [key, succ] of successive) {
+    const timed = lapDetails.get(key) || [];
+    const timedFilled = timed.filter((d) => d.lapTimeFormatted).length;
+    if (succ.length > timedFilled) {
+      const len = Math.max(timed.length, succ.length);
+      lapDetails.set(
+        key,
+        Array.from({ length: len }, (_, i) =>
+          timed[i]?.lapTimeFormatted
+            ? timed[i]
+            : succ[i] || { lapTimeFormatted: "", clockFormatted: "" }
+        )
+      );
+    }
+  }
+  let summary = lapResultsByPilot(slotParsed);
+  const fromDetails = summaryFromLapDetails(slotParsed, lapDetails);
+  for (const [key, s] of fromDetails) {
+    const prev = summary.get(key);
+    if (!prev || s.laps > prev.laps) summary.set(key, s);
   }
   const expected = part.expectedLaps ?? null;
 
