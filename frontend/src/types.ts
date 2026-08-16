@@ -185,6 +185,9 @@ export interface Event {
   overlayTiming?: "splits" | "total";
   /** true = overlays recargan datos cada 5s; false = se queda el último cuadro */
   overlayLiveRefresh?: boolean;
+  overlayPagingMode?: "auto" | "manual";
+  overlayPilotPage?: number;
+  overlayLapPage?: number;
   /**
    * Lectura de CSV Orbits: auto (detecta Borrado), orbits5 (columna Borrado),
    * orbits4 (Vueltas sin incrementar = borrada).

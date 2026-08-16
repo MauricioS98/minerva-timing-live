@@ -72,13 +72,35 @@ export const api = {
   deleteEvent: (id: string) => request<{ ok: boolean }>(`/events/${id}`, { method: "DELETE" }),
 
   getOverlayLive: (eventId: string) =>
-    request<{ overlayLiveRefresh: boolean }>(`/events/${eventId}/overlay-live`),
+    request<{
+      overlayLiveRefresh: boolean;
+      overlayPagingMode?: "auto" | "manual";
+      overlayPilotPage?: number;
+      overlayLapPage?: number;
+    }>(`/events/${eventId}/overlay-live`),
 
-  setOverlayLive: (eventId: string, overlayLiveRefresh: boolean) =>
-    request<{ overlayLiveRefresh: boolean }>(`/events/${eventId}/overlay-live`, {
+  setOverlayLive: (
+    eventId: string,
+    data:
+      | boolean
+      | {
+          overlayLiveRefresh?: boolean;
+          overlayPagingMode?: "auto" | "manual";
+          overlayPilotPage?: number;
+          overlayLapPage?: number;
+        }
+  ) =>
+    request<{
+      overlayLiveRefresh: boolean;
+      overlayPagingMode?: "auto" | "manual";
+      overlayPilotPage?: number;
+      overlayLapPage?: number;
+    }>(`/events/${eventId}/overlay-live`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ overlayLiveRefresh }),
+      body: JSON.stringify(
+        typeof data === "boolean" ? { overlayLiveRefresh: data } : data
+      ),
     }),
 
   unlockEvent: (id: string, password: string) =>

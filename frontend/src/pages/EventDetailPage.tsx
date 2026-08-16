@@ -612,6 +612,14 @@ export function EventDetailPage() {
           </a>
           <a
             className="btn btn-ghost"
+            href={`/overlay/${event.id}/control`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Control overlays
+          </a>
+          <a
+            className="btn btn-ghost"
             href={`/overlay/${event.id}`}
             target="_blank"
             rel="noreferrer"

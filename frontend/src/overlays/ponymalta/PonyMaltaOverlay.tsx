@@ -23,6 +23,8 @@ export type PonyMaltaOverlayProps = {
   top: number;
   showSplits: boolean;
   pageHoldSeconds: number;
+  pagingMode?: "auto" | "manual";
+  remotePage?: number;
 };
 
 type ViewRow = {
@@ -134,6 +136,8 @@ export function PonyMaltaOverlay({
   showHeader,
   top,
   pageHoldSeconds,
+  pagingMode = "auto",
+  remotePage = 0,
 }: PonyMaltaOverlayProps) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const allRows = useMemo(() => {
@@ -223,7 +227,7 @@ export function PonyMaltaOverlay({
   }, [liveMemberKey, livePageRows, exiting]);
 
   useEffect(() => {
-    if (!rowsReady || pageCount <= 1 || displayRows.length === 0) return;
+    if (pagingMode === "manual" || !rowsReady || pageCount <= 1 || displayRows.length === 0) return;
     const buildMs = displayRows.length * ROW_STAGGER_MS + 350;
     let swapTimer: number | null = null;
     const hold = window.setTimeout(() => {
@@ -247,14 +251,35 @@ export function PonyMaltaOverlay({
       window.clearTimeout(hold);
       if (swapTimer != null) window.clearTimeout(swapTimer);
     };
-  }, [pageCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs]);
+  }, [pageCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs, pagingMode]);
 
   useEffect(() => {
+    if (pagingMode !== "manual" || !rowsReady) return;
+    const next = Math.max(0, Math.min(pageCount - 1, Math.floor(Number(remotePage) || 0)));
+    if (next === pageRef.current) return;
+    setExiting(true);
+    const swapTimer = window.setTimeout(() => {
+      pageRef.current = next;
+      const nextRows = allRowsRef.current.slice(
+        next * PAGE_SIZE,
+        next * PAGE_SIZE + PAGE_SIZE
+      );
+      membershipRef.current = membershipKey(nextRows);
+      setDisplayRows(nextRows);
+      setPage(next);
+      setAnimGen((g) => g + 1);
+      setExiting(false);
+    }, PAGE_EXIT_MS);
+    return () => window.clearTimeout(swapTimer);
+  }, [pagingMode, remotePage, pageCount, rowsReady]);
+
+  useEffect(() => {
+    if (pagingMode === "manual") return;
     if (page >= pageCount) {
       pageRef.current = 0;
       setPage(0);
     }
-  }, [page, pageCount]);
+  }, [page, pageCount, pagingMode]);
 
   if (error) {
     return (

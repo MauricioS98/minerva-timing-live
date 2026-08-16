@@ -182,17 +182,43 @@ export async function updatePartStartOrderVs(
 }
 
 /** On/Off for overlay data polling without rewriting the whole event. */
+export async function updateOverlayControl(
+  eventId: string,
+  patch: {
+    overlayLiveRefresh?: boolean;
+    overlayPagingMode?: "auto" | "manual";
+    overlayPilotPage?: number;
+    overlayLapPage?: number;
+  }
+): Promise<void> {
+  const sets: string[] = ["updated_at = now()"];
+  const params: unknown[] = [eventId];
+  let i = 2;
+  if (patch.overlayLiveRefresh !== undefined) {
+    sets.push(`overlay_live_refresh = $${i++}`);
+    params.push(Boolean(patch.overlayLiveRefresh));
+  }
+  if (patch.overlayPagingMode !== undefined) {
+    sets.push(`overlay_paging_mode = $${i++}`);
+    params.push(patch.overlayPagingMode === "manual" ? "manual" : "auto");
+  }
+  if (patch.overlayPilotPage !== undefined) {
+    sets.push(`overlay_pilot_page = $${i++}`);
+    params.push(Math.max(0, Math.floor(Number(patch.overlayPilotPage) || 0)));
+  }
+  if (patch.overlayLapPage !== undefined) {
+    sets.push(`overlay_lap_page = $${i++}`);
+    params.push(Math.max(0, Math.floor(Number(patch.overlayLapPage) || 0)));
+  }
+  if (sets.length === 1) return;
+  await pool.query(`UPDATE events SET ${sets.join(", ")} WHERE id = $1`, params);
+}
+
 export async function updateOverlayLiveRefresh(
   eventId: string,
   live: boolean
 ): Promise<void> {
-  await pool.query(
-    `UPDATE events
-     SET overlay_live_refresh = $2,
-         updated_at = now()
-     WHERE id = $1`,
-    [eventId, live]
-  );
+  await updateOverlayControl(eventId, { overlayLiveRefresh: live });
 }
 
 export async function updatePublishedStartOrder(

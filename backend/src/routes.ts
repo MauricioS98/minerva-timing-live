@@ -7,12 +7,12 @@ import {
   deleteEvent,
   getEvent,
   getPartUploadContext,
-  getOverlayLiveRefresh,
+  getOverlayControl,
   HEADERS_DIR,
   listEvents,
   publicEvent,
   saveEvent,
-  saveOverlayLiveRefresh,
+  saveOverlayControl,
   savePartCsvSlot,
   savePartStartOrderVs,
   savePublishedStartOrder,
@@ -235,18 +235,39 @@ router.put("/events/:id", async (req, res) => {
 });
 
 router.get("/events/:id/overlay-live", async (req, res) => {
-  const live = await getOverlayLiveRefresh(req.params.id);
-  if (live === null) return res.status(404).json({ error: "Evento no encontrado" });
-  res.json({ overlayLiveRefresh: live });
+  const ctrl = await getOverlayControl(req.params.id);
+  if (!ctrl) return res.status(404).json({ error: "Evento no encontrado" });
+  res.json(ctrl);
 });
 
 router.put("/events/:id/overlay-live", async (req, res) => {
-  const live = await saveOverlayLiveRefresh(
-    req.params.id,
-    req.body?.overlayLiveRefresh !== false && req.body?.overlayLiveRefresh !== "false"
-  );
-  if (live === null) return res.status(404).json({ error: "Evento no encontrado" });
-  res.json({ overlayLiveRefresh: live });
+  const patch: {
+    overlayLiveRefresh?: boolean;
+    overlayPagingMode?: "auto" | "manual";
+    overlayPilotPage?: number;
+    overlayLapPage?: number;
+  } = {};
+  if (req.body?.overlayLiveRefresh !== undefined) {
+    patch.overlayLiveRefresh =
+      req.body.overlayLiveRefresh !== false && req.body.overlayLiveRefresh !== "false";
+  }
+  if (req.body?.overlayPagingMode === "manual" || req.body?.overlayPagingMode === "auto") {
+    patch.overlayPagingMode = req.body.overlayPagingMode;
+  }
+  if (req.body?.overlayPilotPage !== undefined) {
+    patch.overlayPilotPage = Math.max(0, Math.floor(Number(req.body.overlayPilotPage) || 0));
+  }
+  if (req.body?.overlayLapPage !== undefined) {
+    patch.overlayLapPage = Math.max(0, Math.floor(Number(req.body.overlayLapPage) || 0));
+  }
+  if (Object.keys(patch).length === 0) {
+    const current = await getOverlayControl(req.params.id);
+    if (!current) return res.status(404).json({ error: "Evento no encontrado" });
+    return res.json(current);
+  }
+  const next = await saveOverlayControl(req.params.id, patch);
+  if (!next) return res.status(404).json({ error: "Evento no encontrado" });
+  res.json(next);
 });
 
 router.delete("/events/:id", async (req, res) => {

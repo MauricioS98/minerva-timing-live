@@ -246,6 +246,12 @@ export interface Event {
    * (default 5s). When false they keep the last loaded frame.
    */
   overlayLiveRefresh?: boolean;
+  /** auto = el overlay pagina solo; manual = sigue overlayPilotPage / overlayLapPage */
+  overlayPagingMode?: "auto" | "manual";
+  /** 0-based page of pilots (posiciones y vuelta a vuelta) */
+  overlayPilotPage?: number;
+  /** 0-based page of lap columns (vuelta a vuelta, 8 vueltas por página) */
+  overlayLapPage?: number;
   /**
    * CSV reader for Orbits exports.
    * auto = detect from headers (Borrado → Orbits 5; sin Borrado → Orbits 4).

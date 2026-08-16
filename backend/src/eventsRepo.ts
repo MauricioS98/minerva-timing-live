@@ -66,6 +66,9 @@ function mapEventRow(row: Record<string, unknown>): Omit<
         ? (row.csv_source as "orbits4" | "orbits5")
         : "auto",
     overlayLiveRefresh: row.overlay_live_refresh !== false,
+    overlayPagingMode: row.overlay_paging_mode === "manual" ? "manual" : "auto",
+    overlayPilotPage: Math.max(0, Math.floor(Number(row.overlay_pilot_page) || 0)),
+    overlayLapPage: Math.max(0, Math.floor(Number(row.overlay_lap_page) || 0)),
     publishedStartOrder:
       row.published_start_order_test_id && row.published_start_order_part_id
         ? {
@@ -488,14 +491,40 @@ export async function getPartUploadContext(
   };
 }
 
-export async function getOverlayLiveRefresh(eventId: string): Promise<boolean | null> {
-  const r = await q<{ overlay_live_refresh: boolean | null }>(
+export type OverlayControlState = {
+  overlayLiveRefresh: boolean;
+  overlayPagingMode: "auto" | "manual";
+  overlayPilotPage: number;
+  overlayLapPage: number;
+};
+
+export async function getOverlayControl(
+  eventId: string
+): Promise<OverlayControlState | null> {
+  const r = await q<{
+    overlay_live_refresh: boolean | null;
+    overlay_paging_mode: string | null;
+    overlay_pilot_page: number | null;
+    overlay_lap_page: number | null;
+  }>(
     pool,
-    `SELECT overlay_live_refresh FROM events WHERE id = $1`,
+    `SELECT overlay_live_refresh, overlay_paging_mode, overlay_pilot_page, overlay_lap_page
+     FROM events WHERE id = $1`,
     [eventId]
   );
   if (!r.rows[0]) return null;
-  return r.rows[0].overlay_live_refresh !== false;
+  const row = r.rows[0];
+  return {
+    overlayLiveRefresh: row.overlay_live_refresh !== false,
+    overlayPagingMode: row.overlay_paging_mode === "manual" ? "manual" : "auto",
+    overlayPilotPage: Math.max(0, Math.floor(Number(row.overlay_pilot_page) || 0)),
+    overlayLapPage: Math.max(0, Math.floor(Number(row.overlay_lap_page) || 0)),
+  };
+}
+
+export async function getOverlayLiveRefresh(eventId: string): Promise<boolean | null> {
+  const ctrl = await getOverlayControl(eventId);
+  return ctrl ? ctrl.overlayLiveRefresh : null;
 }
 
 export async function listEventIds(): Promise<string[]> {

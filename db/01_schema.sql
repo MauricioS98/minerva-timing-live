@@ -34,6 +34,10 @@ CREATE TABLE events (
   csv_source          TEXT NOT NULL DEFAULT 'auto'
                         CHECK (csv_source IN ('auto', 'orbits4', 'orbits5')),
   overlay_live_refresh BOOLEAN NOT NULL DEFAULT TRUE,
+  overlay_paging_mode TEXT NOT NULL DEFAULT 'auto'
+                        CHECK (overlay_paging_mode IN ('auto', 'manual')),
+  overlay_pilot_page  INTEGER NOT NULL DEFAULT 0,
+  overlay_lap_page    INTEGER NOT NULL DEFAULT 0,
   -- Single active Orden de salida for /overlay/:id/orden-salida
   published_start_order_test_id UUID NULL,
   published_start_order_part_id UUID NULL,

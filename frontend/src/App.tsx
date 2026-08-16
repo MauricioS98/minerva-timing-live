@@ -3,6 +3,7 @@ import { EventsPage } from "./pages/EventsPage";
 import { EventDetailPage } from "./pages/EventDetailPage";
 import { PublicBoardPage } from "./pages/PublicBoardPage";
 import { OverlayPage } from "./pages/OverlayPage";
+import { OverlayControlPage } from "./pages/OverlayControlPage";
 import { StartOrderOverlayPage } from "./overlays/redbull/StartOrderOverlay";
 import { LapByLapOverlayPage } from "./overlays/ponymalta/LapByLapOverlay";
 
@@ -14,6 +15,7 @@ export default function App() {
   if (isOverlay) {
     return (
       <Routes>
+        <Route path="/overlay/:id/control" element={<OverlayControlPage />} />
         <Route path="/overlay/:id/orden-salida" element={<StartOrderOverlayPage />} />
         <Route path="/overlay/:id/vuelta-a-vuelta" element={<LapByLapOverlayPage />} />
         <Route path="/overlay/:id" element={<OverlayPage />} />

@@ -30,6 +30,8 @@ export type RedBullOverlayProps = {
   showSplits: boolean;
   /** Seconds to hold a full page after all rows have entered (from panel) */
   pageHoldSeconds: number;
+  pagingMode?: "auto" | "manual";
+  remotePage?: number;
 };
 
 type ViewRow = {
@@ -108,6 +110,8 @@ export function RedBullOverlay({
   top,
   showSplits,
   pageHoldSeconds,
+  pagingMode = "auto",
+  remotePage = 0,
 }: RedBullOverlayProps) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
 
@@ -204,7 +208,7 @@ export function RedBullOverlay({
   // Auto-paginate. Keep `allRows` out of deps — board poll every few seconds
   // was resetting the timer before build+hold could finish (esp. with 1s stagger).
   useEffect(() => {
-    if (!rowsReady || pageCount <= 1 || displayRows.length === 0) return;
+    if (pagingMode === "manual" || !rowsReady || pageCount <= 1 || displayRows.length === 0) return;
 
     const buildMs = displayRows.length * ROW_STAGGER_MS + ROW_ENTER_MS;
     let swapTimer: number | null = null;
@@ -230,9 +234,30 @@ export function RedBullOverlay({
       window.clearTimeout(hold);
       if (swapTimer != null) window.clearTimeout(swapTimer);
     };
-  }, [pageCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs]);
+  }, [pageCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs, pagingMode]);
 
   useEffect(() => {
+    if (pagingMode !== "manual" || !rowsReady) return;
+    const next = Math.max(0, Math.min(pageCount - 1, Math.floor(Number(remotePage) || 0)));
+    if (next === pageRef.current) return;
+    setExiting(true);
+    const swapTimer = window.setTimeout(() => {
+      pageRef.current = next;
+      const nextRows = allRowsRef.current.slice(
+        next * PAGE_SIZE,
+        next * PAGE_SIZE + PAGE_SIZE
+      );
+      membershipRef.current = membershipKey(nextRows);
+      setDisplayRows(nextRows);
+      setPage(next);
+      setAnimGen((g) => g + 1);
+      setExiting(false);
+    }, PAGE_EXIT_MS);
+    return () => window.clearTimeout(swapTimer);
+  }, [pagingMode, remotePage, pageCount, rowsReady]);
+
+  useEffect(() => {
+    if (pagingMode === "manual") return;
     if (page >= pageCount) {
       pageRef.current = 0;
       setPage(0);

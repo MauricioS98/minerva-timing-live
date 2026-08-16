@@ -44,7 +44,7 @@ export function OverlayPage() {
     }
   }, [id]);
 
-  useOverlayLivePoll(id, load, refreshSec * 1000);
+  const control = useOverlayLivePoll(id, load, refreshSec * 1000);
 
   const section: Section | null = useMemo(() => {
     if (!data || data.sections.length === 0) return null;
@@ -100,6 +100,8 @@ export function OverlayPage() {
         showSplits={showSplits}
         pageHoldSeconds={pageHoldSeconds}
         top={Math.max(1, Number.isFinite(topParam) && topParam > 0 ? topParam : 40)}
+        pagingMode={control.overlayPagingMode}
+        remotePage={control.overlayPilotPage}
       />
     );
   }
@@ -113,6 +115,8 @@ export function OverlayPage() {
         showSplits={showSplits}
         pageHoldSeconds={pageHoldSeconds}
         top={Math.max(1, Number.isFinite(topParam) && topParam > 0 ? topParam : 40)}
+        pagingMode={control.overlayPagingMode}
+        remotePage={control.overlayPilotPage}
       />
     );
   }

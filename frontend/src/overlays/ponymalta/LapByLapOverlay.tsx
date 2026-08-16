@@ -84,7 +84,7 @@ export function LapByLapOverlayPage() {
     };
   }, []);
 
-  useOverlayLivePoll(id, load, refreshSec * 1000);
+  const control = useOverlayLivePoll(id, load, refreshSec * 1000);
 
   return (
     <LapByLapOverlay
@@ -93,6 +93,9 @@ export function LapByLapOverlayPage() {
       maxLaps={maxLaps}
       allRows={allRows}
       pageHoldSeconds={pageHoldSeconds}
+      pagingMode={control.overlayPagingMode}
+      remotePilotPage={control.overlayPilotPage}
+      remoteLapPage={control.overlayLapPage}
     />
   );
 }
@@ -103,12 +106,18 @@ function LapByLapOverlay({
   maxLaps,
   allRows,
   pageHoldSeconds,
+  pagingMode = "auto",
+  remotePilotPage = 0,
+  remoteLapPage = 0,
 }: {
   error: string;
   title: string;
   maxLaps: number;
   allRows: LapViewRow[];
   pageHoldSeconds: number;
+  pagingMode?: "auto" | "manual";
+  remotePilotPage?: number;
+  remoteLapPage?: number;
 }) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const totalLaps = Math.max(1, maxLaps);
@@ -201,7 +210,7 @@ function LapByLapOverlay({
   }, [liveMemberKey, livePageRows, exiting]);
 
   useEffect(() => {
-    if (!rowsReady || screenCount <= 1 || displayRows.length === 0) return;
+    if (pagingMode === "manual" || !rowsReady || screenCount <= 1 || displayRows.length === 0) return;
     const buildMs = displayRows.length * LL_ROW_STAGGER_MS + 350;
     let swapTimer: number | null = null;
     const hold = window.setTimeout(() => {
@@ -230,14 +239,40 @@ function LapByLapOverlay({
       window.clearTimeout(hold);
       if (swapTimer != null) window.clearTimeout(swapTimer);
     };
-  }, [screenCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs]);
+  }, [screenCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs, pagingMode]);
 
   useEffect(() => {
+    if (pagingMode !== "manual" || !rowsReady) return;
+    const lp = Math.max(1, lapPageCount);
+    const pp = Math.max(1, pilotPageCount);
+    const pilot = Math.max(0, Math.min(pp - 1, Math.floor(Number(remotePilotPage) || 0)));
+    const lap = Math.max(0, Math.min(lp - 1, Math.floor(Number(remoteLapPage) || 0)));
+    const next = decodeScreen(pilot * lp + lap, lp, pp).screen;
+    if (next === pageRef.current) return;
+    setExiting(true);
+    const swapTimer = window.setTimeout(() => {
+      pageRef.current = next;
+      const decoded = decodeScreen(next, lapPageCountRef.current, pilotPageCountRef.current);
+      const nextRows = allRowsRef.current.slice(
+        decoded.pilotPage * PILOT_PAGE_SIZE,
+        decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
+      );
+      membershipRef.current = membershipKey(nextRows, decoded.lapPage);
+      setDisplayRows(nextRows);
+      setPage(next);
+      setAnimGen((g) => g + 1);
+      setExiting(false);
+    }, PAGE_EXIT_MS);
+    return () => window.clearTimeout(swapTimer);
+  }, [pagingMode, remotePilotPage, remoteLapPage, lapPageCount, pilotPageCount, rowsReady]);
+
+  useEffect(() => {
+    if (pagingMode === "manual") return;
     if (page >= screenCount) {
       pageRef.current = 0;
       setPage(0);
     }
-  }, [page, screenCount]);
+  }, [page, screenCount, pagingMode]);
 
   const gridTemplate = `76px 280px repeat(${lapsShown}, ${lapCol}px)`;
   const boardWidth = 76 + 280 + lapsShown * lapCol;

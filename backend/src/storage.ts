@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { Event, PartCsvSlot, Pilot, StartOrderVsPair } from "./types.js";
 import {
+  getOverlayControl,
   getOverlayLiveRefresh,
   getPartUploadContext,
   loadAllEvents,
@@ -14,7 +15,7 @@ import {
   replacePartCsvs,
   updatePartCsvMeta,
   updatePartStartOrderVs,
-  updateOverlayLiveRefresh,
+  updateOverlayControl,
   updatePublishedStartOrder,
   upsertPartCsvSlot,
 } from "./eventsWrite.js";
@@ -77,6 +78,9 @@ function normalizeLoaded(event: Event): Event {
       ? event.csvSource
       : "auto";
   event.overlayLiveRefresh = event.overlayLiveRefresh !== false;
+  event.overlayPagingMode = event.overlayPagingMode === "manual" ? "manual" : "auto";
+  event.overlayPilotPage = Math.max(0, Math.floor(Number(event.overlayPilotPage) || 0));
+  event.overlayLapPage = Math.max(0, Math.floor(Number(event.overlayLapPage) || 0));
   event.publishedStartOrder =
     event.publishedStartOrder?.testId && event.publishedStartOrder?.partId
       ? {
@@ -251,22 +255,39 @@ export async function savePartStartOrderVs(
   }
 }
 
-export { getOverlayLiveRefresh };
+export { getOverlayControl, getOverlayLiveRefresh };
+
+export async function saveOverlayControl(
+  eventId: string,
+  patch: {
+    overlayLiveRefresh?: boolean;
+    overlayPagingMode?: "auto" | "manual";
+    overlayPilotPage?: number;
+    overlayLapPage?: number;
+  }
+): Promise<Awaited<ReturnType<typeof getOverlayControl>>> {
+  const current = await getOverlayControl(eventId);
+  if (!current) return null;
+  await updateOverlayControl(eventId, patch);
+  const next = await getOverlayControl(eventId);
+  const hit = eventCache.get(eventId);
+  if (hit && next) {
+    hit.event.overlayLiveRefresh = next.overlayLiveRefresh;
+    hit.event.overlayPagingMode = next.overlayPagingMode;
+    hit.event.overlayPilotPage = next.overlayPilotPage;
+    hit.event.overlayLapPage = next.overlayLapPage;
+    hit.event.updatedAt = new Date().toISOString();
+    hit.at = Date.now();
+  }
+  return next;
+}
 
 export async function saveOverlayLiveRefresh(
   eventId: string,
   live: boolean
 ): Promise<boolean | null> {
-  const current = await getOverlayLiveRefresh(eventId);
-  if (current === null) return null;
-  await updateOverlayLiveRefresh(eventId, live);
-  const hit = eventCache.get(eventId);
-  if (hit) {
-    hit.event.overlayLiveRefresh = live;
-    hit.event.updatedAt = new Date().toISOString();
-    hit.at = Date.now();
-  }
-  return live;
+  const next = await saveOverlayControl(eventId, { overlayLiveRefresh: live });
+  return next ? next.overlayLiveRefresh : null;
 }
 
 /** Publish / clear the single active Orden de salida for the overlay. */

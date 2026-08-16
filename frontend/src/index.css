@@ -2774,3 +2774,128 @@ body.overlay-transparent,
   opacity: 0.9;
 }
 
+.ov-ctrl {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2.5rem;
+  color: var(--text);
+}
+
+.ov-ctrl-head h1 {
+  margin: 0.15rem 0 0.55rem;
+  font-size: 1.55rem;
+}
+
+.ov-ctrl-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ov-ctrl-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.ov-ctrl-links a {
+  color: #f0b0a6;
+}
+
+.ov-ctrl-card {
+  margin-top: 1.1rem;
+  padding: 1rem 1.05rem 1.15rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.ov-ctrl-card h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.ov-ctrl-card h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.92rem;
+}
+
+.ov-ctrl-card p {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.ov-ctrl-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.ov-ctrl-mode,
+.ov-ctrl-page {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ov-ctrl-mode.is-on,
+.ov-ctrl-page.is-on {
+  background: #1a6b3c;
+  border-color: #2a8a52;
+  color: #fff;
+}
+
+.ov-ctrl-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ov-ctrl-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.ov-ctrl-selects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.ov-ctrl-selects label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ov-ctrl-selects select {
+  min-height: 42px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0.35rem 0.5rem;
+}
+
+@media (max-width: 560px) {
+  .ov-ctrl-selects {
+    grid-template-columns: 1fr;
+  }
+}
+
+
