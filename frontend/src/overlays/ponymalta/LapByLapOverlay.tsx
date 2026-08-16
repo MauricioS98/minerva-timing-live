@@ -53,13 +53,8 @@ export function LapByLapOverlayPage() {
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [maxLaps, setMaxLaps] = useState(0);
-  const [lapsHighWater, setLapsHighWater] = useState(0);
   const [allRows, setAllRows] = useState<LapViewRow[]>([]);
   const [pageHoldSeconds, setPageHoldSeconds] = useState(10);
-
-  useEffect(() => {
-    setLapsHighWater(0);
-  }, [id, testId, partId]);
 
   const load = useCallback(async () => {
     if (!id || !testId) {
@@ -74,14 +69,14 @@ export function LapByLapOverlayPage() {
         key: String(r.number || `p${r.position}`),
         position: r.position,
         name: r.name || "—",
-        laps: r.lapTimesFormatted || [],
+        laps: (r.lapTimesFormatted || []).filter(Boolean),
       }));
-      const filled = Math.max(
-        data.maxLaps || 0,
-        ...rows.map((r) => r.laps.filter(Boolean).length)
+      setMaxLaps(
+        Math.max(
+          data.maxLaps || 0,
+          ...rows.map((r) => r.laps.length)
+        )
       );
-      setLapsHighWater((h) => Math.max(h, filled));
-      setMaxLaps(filled);
       setAllRows(rows);
       setError(data.warning || "");
     } catch (e) {
@@ -104,7 +99,7 @@ export function LapByLapOverlayPage() {
     <LapByLapOverlay
       error={!id || !testId ? "Falta la prueba en la URL." : error}
       title={title}
-      maxLaps={Math.max(maxLaps, lapsHighWater)}
+      maxLaps={maxLaps}
       allRows={allRows}
       pageHoldSeconds={pageHoldSeconds}
       pagingMode={control.overlayPagingMode}
@@ -122,7 +117,6 @@ function LapByLapOverlay({
   pageHoldSeconds,
   pagingMode = "auto",
   remotePilotPage = 0,
-  remoteLapPage = 0,
 }: {
   error: string;
   title: string;

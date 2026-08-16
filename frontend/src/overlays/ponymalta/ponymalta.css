@@ -349,8 +349,10 @@
 }
 
 .pm-ll-board .pm-table-head,
-.pm-ll-board .pm-ll-row {
+.pm-ll-board .pm-ll-row,
+.pm-ll-board .pm-row {
   grid-template-columns: var(--pm-ll-cols);
+  width: 100%;
 }
 
 .pm-ll-board .pm-table-head > span:nth-child(n + 3),

@@ -342,28 +342,20 @@ export interface LapByLapRow {
 type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
 
 function lapDetailsByPilot(parsed: ParsedCsv): Map<string, LapDetail[]> {
-  const hits = new Map<string, Map<number, LapDetail>>();
-  for (const p of parsed.racePassages || []) {
+  const map = new Map<string, LapDetail[]>();
+  const ordered = [...(parsed.racePassages || [])].sort(
+    (a, b) => a.rowIndex - b.rowIndex || a.tmPasosMs - b.tmPasosMs
+  );
+  for (const p of ordered) {
     if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
     const key = normalizeNumber(p.number);
-    if (!hits.has(key)) hits.set(key, new Map());
-    const byTm = hits.get(key)!;
-    if (byTm.has(p.tmPasosMs)) continue;
-    byTm.set(p.tmPasosMs, {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push({
       lapTimeFormatted: formatMs(p.lapTimeMs),
       clockFormatted: p.tmPasosRaw?.trim() || formatMs(p.tmPasosMs, true),
     });
   }
-  const dense = new Map<string, LapDetail[]>();
-  for (const [key, byTm] of hits) {
-    dense.set(
-      key,
-      [...byTm.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([, d]) => d)
-    );
-  }
-  return dense;
+  return map;
 }
 
 /**
@@ -449,35 +441,6 @@ function concatLapDetails(a: LapDetail[], b: LapDetail[]): LapDetail[] {
   ];
 }
 
-/** Union laps; a later shorter dump must not erase earlier vueltas. */
-function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
-  const filledA = a.filter((d) => d.lapTimeFormatted);
-  const filledB = b.filter((d) => d.lapTimeFormatted);
-  const primary = filledA.length >= filledB.length ? filledA : filledB;
-  const other = filledA.length >= filledB.length ? filledB : filledA;
-  const keyOf = (d: LapDetail, i: number) => {
-    const clock = d.clockFormatted?.trim() || "";
-    const time = d.lapTimeFormatted.trim();
-    return clock ? `${clock}|${time}` : `t:${time}|${i}`;
-  };
-  const seen = new Set<string>();
-  const out: LapDetail[] = [];
-  const add = (d: LapDetail) => {
-    const k = keyOf(d, out.length);
-    if (seen.has(k)) return;
-    seen.add(k);
-    out.push(d);
-  };
-  for (const d of primary) add(d);
-  for (const d of other) add(d);
-  out.sort((x, y) => {
-    const xc = parseTimeToMs(x.clockFormatted || "") ?? 0;
-    const yc = parseTimeToMs(y.clockFormatted || "") ?? 0;
-    return xc - yc;
-  });
-  return out.length >= Math.max(filledA.length, filledB.length) ? out : primary;
-}
-
 function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
   const lapDetails = lapDetailsByPilot(parsed);
   const successive = lapDetailsFromSuccessiveHits(parsed);
@@ -532,8 +495,6 @@ export function computeLapByLapResults(
   let anyCsv = false;
 
   for (const src of sources) {
-    const appendFiles =
-      csvInputModeOf(src) === "combined" || csvInputModeOf(src) === "pilots";
     for (const parsed of parsedListFromPart(src, event)) {
       anyCsv = true;
       for (const p of parsed.racePassages || []) {
@@ -542,11 +503,7 @@ export function computeLapByLapResults(
       }
       const details = lapDetailsForParsed(parsed);
       for (const [key, list] of details) {
-        const prev = lapDetails.get(key) || [];
-        lapDetails.set(
-          key,
-          appendFiles ? concatLapDetails(prev, list) : mergeLapDetailLists(prev, list)
-        );
+        lapDetails.set(key, concatLapDetails(lapDetails.get(key) || [], list));
       }
     }
   }
