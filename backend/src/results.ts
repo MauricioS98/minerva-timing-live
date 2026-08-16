@@ -396,7 +396,9 @@ function mergedPointParsed(
   return best.parsed;
 }
 
-function parsedForLapByLap(
+type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
+
+function parsedFromPart(
   part: TestPart,
   event: Event,
   test: Test,
@@ -405,34 +407,47 @@ function parsedForLapByLap(
 ): ParsedCsv | null {
   const mode = csvInputModeOf(part);
   if (mode === "pilots") return mergedPilotParsed(part, event.pilots || []);
-  if (mode === "combined") return combinedCsvSlot(resolveCombinedLapPart(test, part))?.parsed ?? null;
+  if (mode === "combined") return combinedCsvSlot(part)?.parsed ?? null;
   return mergedPointParsed(part, event, test, fromPointId, toPointId);
 }
 
-/**
- * CSV único is often re-uploaded as a later salida (same race, more laps).
- * OBS links stay on the first part; standings already pick the dump with more laps.
- */
-function resolveCombinedLapPart(test: Test, part: TestPart): TestPart {
-  let best = part;
-  let bestScore = combinedLapScore(part);
-  for (const p of test.parts || []) {
-    if (csvInputModeOf(p) !== "combined") continue;
-    const score = combinedLapScore(p);
-    if (score > bestScore) {
-      bestScore = score;
-      best = p;
-    }
-  }
-  return best;
+function isTimePrefix(short: string[], long: string[]): boolean {
+  if (short.length === 0 || short.length > long.length) return false;
+  return short.every((t, i) => t === long[i]);
 }
 
-function combinedLapScore(part: TestPart): number {
-  const parsed = combinedCsvSlot(part)?.parsed;
-  if (!parsed) return -1;
-  const passages = parsed.racePassages || [];
-  const maxLaps = passages.reduce((m, p) => Math.max(m, p.lapsCount ?? 0), 0);
-  return maxLaps * 100_000 + lapHitCount(parsed) * 1000 + passages.length;
+/** Later dump of the same race replaces; a new heat is appended. */
+function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
+  const aTimes = a.map((d) => d.lapTimeFormatted).filter(Boolean);
+  const bTimes = b.map((d) => d.lapTimeFormatted).filter(Boolean);
+  if (bTimes.length === 0) return a;
+  if (aTimes.length === 0) return b;
+  if (isTimePrefix(aTimes, bTimes)) return b;
+  if (isTimePrefix(bTimes, aTimes)) return a;
+  return [...a, ...b];
+}
+
+function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
+  const lapDetails = lapDetailsByPilot(parsed);
+  const successive = lapDetailsFromSuccessiveHits(parsed);
+  for (const [key, succ] of successive) {
+    const timed = lapDetails.get(key) || [];
+    const timedFilled = timed.filter((d) => d.lapTimeFormatted).length;
+    if (succ.length > timedFilled) {
+      const len = Math.max(timed.length, succ.length);
+      lapDetails.set(
+        key,
+        Array.from({ length: len }, (_, i) =>
+          timed[i]?.lapTimeFormatted
+            ? timed[i]
+            : succ[i] || { lapTimeFormatted: "", clockFormatted: "" }
+        )
+      );
+    } else if (!lapDetails.has(key) && succ.length > 0) {
+      lapDetails.set(key, succ);
+    }
+  }
+  return lapDetails;
 }
 
 /** If Orbits didn't fill Tiempo de vuelta, build laps from successive hits. */
@@ -464,105 +479,67 @@ function lapDetailsFromSuccessiveHits(
   return map;
 }
 
-function summaryFromLapDetails(
-  parsed: ParsedCsv,
-  details: Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>
-): Map<string, LapPilotResult> {
-  const first = new Map<string, { number: string; name: string }>();
-  for (const p of parsed.racePassages || []) {
-    const key = normalizeNumber(p.number);
-    if (!first.has(key)) first.set(key, { number: p.number, name: p.name });
-  }
-  const result = new Map<string, LapPilotResult>();
-  for (const [key, laps] of details) {
-    const meta = first.get(key);
-    if (!meta || laps.length === 0) continue;
-    const totalTimeMs = laps.reduce((sum, d) => {
-      const ms = parseTimeToMs(d.lapTimeFormatted) || 0;
-      return sum + ms;
-    }, 0);
-    result.set(key, {
-      number: meta.number,
-      name: meta.name,
-      laps: laps.length,
-      totalTimeMs,
-    });
-  }
-  return result;
-}
-
 export function computeLapByLapResults(
   event: Event,
   test: Test,
-  part: TestPart,
+  _part: TestPart,
   fromPointId?: string,
   toPointId?: string
 ): { rows: LapByLapRow[]; maxLaps: number; warning?: string } {
-  const slotParsed = parsedForLapByLap(part, event, test, fromPointId, toPointId);
-  if (!slotParsed) {
+  const sources = [...(test.parts || [])].sort((a, b) => a.order - b.order);
+  if (sources.length === 0) sources.push(_part);
+  const lapDetails = new Map<string, LapDetail[]>();
+  const meta = new Map<string, { number: string; name: string }>();
+  let anyCsv = false;
+
+  for (const src of sources) {
+    const parsed = parsedFromPart(src, event, test, fromPointId, toPointId);
+    if (!parsed) continue;
+    anyCsv = true;
+    for (const p of parsed.racePassages || []) {
+      const key = normalizeNumber(p.number);
+      if (!meta.has(key)) meta.set(key, { number: p.number, name: p.name });
+    }
+    const details = lapDetailsForParsed(parsed);
+    for (const [key, list] of details) {
+      lapDetails.set(key, mergeLapDetailLists(lapDetails.get(key) || [], list));
+    }
+  }
+
+  if (!anyCsv) {
     return { rows: [], maxLaps: 0, warning: "No hay CSV cargado en esta parte." };
   }
 
   const pilots = event.pilots || [];
-  let lapDetails = lapDetailsByPilot(slotParsed);
-  const successive = lapDetailsFromSuccessiveHits(slotParsed);
-  for (const [key, succ] of successive) {
-    const timed = lapDetails.get(key) || [];
-    const timedFilled = timed.filter((d) => d.lapTimeFormatted).length;
-    if (succ.length > timedFilled) {
-      const len = Math.max(timed.length, succ.length);
-      lapDetails.set(
-        key,
-        Array.from({ length: len }, (_, i) =>
-          timed[i]?.lapTimeFormatted
-            ? timed[i]
-            : succ[i] || { lapTimeFormatted: "", clockFormatted: "" }
-        )
-      );
-    }
-  }
-  let summary = lapResultsByPilot(slotParsed);
-  const fromDetails = summaryFromLapDetails(slotParsed, lapDetails);
-  for (const [key, s] of fromDetails) {
-    const prev = summary.get(key);
-    if (!prev || s.laps > prev.laps) summary.set(key, s);
-  }
-  const expected = part.expectedLaps ?? null;
+  const expected = sources.reduce<number | null>((max, p) => {
+    const n = p.expectedLaps;
+    if (n == null) return max;
+    return max == null ? n : Math.max(max, n);
+  }, null);
 
-  let rows: LapByLapRow[] = [];
-  for (const [key, s] of summary) {
-    const details = lapDetails.get(key) || [];
+  const rows: LapByLapRow[] = [];
+  for (const [key, details] of lapDetails) {
+    const filled = details.filter((d) => d.lapTimeFormatted);
+    if (filled.length === 0) continue;
+    const info = meta.get(key);
     const pilot = pilots.find((p) => normalizeNumber(p.number) === key);
+    const totalTimeMs = filled.reduce(
+      (sum, d) => sum + (parseTimeToMs(d.lapTimeFormatted) || 0),
+      0
+    );
     rows.push({
       position: 0,
-      number: s.number,
-      name: (pilot?.name || s.name || s.number).trim() || s.number,
+      number: info?.number || key,
+      name: (pilot?.name || info?.name || info?.number || key).trim() || key,
       category: pilot?.category || "",
       league: pilot?.league || "",
       lapTimesFormatted: details.map((d) => d.lapTimeFormatted),
       lapClockTimesFormatted: details.map((d) => d.clockFormatted),
-      lapsCompleted: s.laps,
+      lapsCompleted: filled.length,
       expectedLaps: expected,
-      totalTimeFormatted: formatMs(s.totalTimeMs),
-      totalTimeMs: s.totalTimeMs,
+      totalTimeFormatted: formatMs(totalTimeMs),
+      totalTimeMs,
     });
-  }
-
-  const { fromId, toId } = resolveTestTimingPoints(event, test, fromPointId, toPointId);
-  if (csvInputModeOf(part) === "points") {
-    const { rows: partRows } = computePartResults(event, test, part, fromId, toId);
-    const { rows: filteredPartRows } = filterNewPilotsVsEarlier(
-      event,
-      test,
-      part,
-      partRows,
-      fromId,
-      toId
-    );
-    if (filteredPartRows.length > 0) {
-      const allowed = new Set(filteredPartRows.map((r) => normalizeNumber(r.number)));
-      rows = rows.filter((r) => allowed.has(normalizeNumber(r.number)));
-    }
   }
 
   rows.sort((a, b) => {

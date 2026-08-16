@@ -737,7 +737,7 @@ router.get("/events/:id/tests/:testId/laps", async (req, res) => {
   const { rows, maxLaps, warning } = computeLapByLapResults(event, test, part, fromId, toId);
 
   res.json({
-    title: `${test.name} — ${part.name}`,
+    title: `${test.name} — Vuelta a vuelta`,
     maxLaps,
     warning: warning || null,
     eventName: event.name,
