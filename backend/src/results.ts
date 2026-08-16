@@ -252,21 +252,31 @@ function mergedLapResultsFromPart(
   part: TestPart,
   event: Event
 ): Map<string, LapPilotResult> {
-  const result = new Map<string, LapPilotResult>();
+  const details = new Map<string, LapDetail[]>();
+  const meta = new Map<string, { number: string; name: string }>();
   for (const parsed of parsedListFromPart(part, event)) {
-    for (const [key, p] of lapResultsByPilot(parsed)) {
-      const prev = result.get(key);
-      if (!prev) {
-        result.set(key, { ...p });
-        continue;
-      }
-      result.set(key, {
-        number: prev.number,
-        name: pickName(p.name, prev.name),
-        laps: prev.laps + p.laps,
-        totalTimeMs: prev.totalTimeMs + p.totalTimeMs,
-      });
+    for (const p of parsed.racePassages || []) {
+      const key = normalizeNumber(p.number);
+      if (!meta.has(key)) meta.set(key, { number: p.number, name: p.name });
     }
+    for (const [key, list] of lapDetailsForParsed(parsed)) {
+      details.set(key, concatLapDetails(details.get(key) || [], list));
+    }
+  }
+  const result = new Map<string, LapPilotResult>();
+  for (const [key, list] of details) {
+    const filled = list.filter((d) => d.lapTimeFormatted);
+    if (filled.length === 0) continue;
+    const info = meta.get(key);
+    result.set(key, {
+      number: info?.number || key,
+      name: info?.name || key,
+      laps: filled.length,
+      totalTimeMs: filled.reduce(
+        (sum, d) => sum + (parseTimeToMs(d.lapTimeFormatted) || 0),
+        0
+      ),
+    });
   }
   return result;
 }
@@ -385,12 +395,24 @@ function parsedListFromPart(
   event: Event
 ): ParsedCsv[] {
   const out: ParsedCsv[] = [];
+  const seenFile = new Set<string>();
+  const take = (parsed: ParsedCsv | undefined, filename?: string) => {
+    if (!parsed) return;
+    const fn = String(filename || parsed.filename || "")
+      .trim()
+      .toLowerCase();
+    if (fn) {
+      if (seenFile.has(fn)) return;
+      seenFile.add(fn);
+    }
+    out.push(parsed);
+  };
   if (csvInputModeOf(part) === "pilots") {
     const merged = mergedPilotParsed(part, event.pilots || []);
-    if (merged) out.push(merged);
+    if (merged) take(merged, merged.filename);
     for (const s of part.csvs || []) {
       if (s.parsed && !String(s.pilotNumber || "").trim()) {
-        out.push(dropUnnamedStrayPassages(s.parsed));
+        take(dropUnnamedStrayPassages(s.parsed), s.filename);
       }
     }
     return out;
@@ -398,7 +420,7 @@ function parsedListFromPart(
   for (const s of part.csvs || []) {
     if (!s.parsed) continue;
     const n = String(s.pilotNumber || "").trim();
-    out.push(n ? isolatePilotCsv(s.parsed, n) : dropUnnamedStrayPassages(s.parsed));
+    take(n ? isolatePilotCsv(s.parsed, n) : dropUnnamedStrayPassages(s.parsed), s.filename);
   }
   return out;
 }
@@ -434,11 +456,61 @@ function fastestLapRows(
   });
 }
 
+function collapseConsecutiveDupes(list: LapDetail[]): LapDetail[] {
+  const out: LapDetail[] = [];
+  for (const d of list) {
+    if (!d.lapTimeFormatted) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.lapTimeFormatted === d.lapTimeFormatted) continue;
+    out.push(d);
+  }
+  return out;
+}
+
+/** ABCABC or ABAB → ABC / AB (same CSV re-uploaded into the union). */
+function stripRepeatedBlocks(list: LapDetail[]): LapDetail[] {
+  let filled = collapseConsecutiveDupes(list);
+  let changed = true;
+  while (changed && filled.length >= 2) {
+    changed = false;
+    const t = filled.map((d) => d.lapTimeFormatted);
+    for (let k = Math.floor(t.length / 2); k >= 1; k--) {
+      let match = true;
+      for (let i = 0; i < k; i++) {
+        if (t[i] !== t[k + i]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        filled = [...filled.slice(0, k), ...filled.slice(2 * k)];
+        changed = true;
+        break;
+      }
+    }
+  }
+  return filled;
+}
+
+function isContiguousSubsequence(needle: string[], hay: string[]): boolean {
+  if (needle.length === 0) return true;
+  if (needle.length > hay.length) return false;
+  for (let i = 0; i <= hay.length - needle.length; i++) {
+    if (needle.every((t, j) => t === hay[i + j])) return true;
+  }
+  return false;
+}
+
 function concatLapDetails(a: LapDetail[], b: LapDetail[]): LapDetail[] {
-  return [
-    ...a.filter((d) => d.lapTimeFormatted),
-    ...b.filter((d) => d.lapTimeFormatted),
-  ];
+  const A = stripRepeatedBlocks(a);
+  const B = stripRepeatedBlocks(b);
+  if (!B.length) return A;
+  if (!A.length) return B;
+  const ta = A.map((d) => d.lapTimeFormatted);
+  const tb = B.map((d) => d.lapTimeFormatted);
+  if (isContiguousSubsequence(tb, ta)) return A;
+  if (isContiguousSubsequence(ta, tb)) return B;
+  return stripRepeatedBlocks([...A, ...B]);
 }
 
 function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
@@ -448,6 +520,9 @@ function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
     const timed = lapDetails.get(key) || [];
     const timedFilled = timed.filter((d) => d.lapTimeFormatted).length;
     if (timedFilled === 0 && succ.length > 0) lapDetails.set(key, succ);
+  }
+  for (const [key, list] of lapDetails) {
+    lapDetails.set(key, stripRepeatedBlocks(list));
   }
   return lapDetails;
 }
