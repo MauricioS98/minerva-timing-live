@@ -148,6 +148,11 @@ async function writeCsvSlot(client: Q, partId: string, slot: PartCsvSlot): Promi
  */
 export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Promise<void> {
   const pilotNumber = String(slot.pilotNumber || "").trim();
+  const pointId =
+    slot.timingPointId && /^[0-9a-f-]{36}$/i.test(slot.timingPointId)
+      ? slot.timingPointId
+      : null;
+  const filename = String(slot.filename || "").trim();
   await withTransaction(async (client) => {
     if (pilotNumber) {
       await q(
@@ -156,6 +161,16 @@ export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Prom
          WHERE part_id = $1 AND lower(btrim(pilot_number)) = lower(btrim($2))`,
         [partId, pilotNumber]
       );
+    } else if (!pointId) {
+      // CSV único: several files per salida (NULL timing_point_id). Replace by filename.
+      if (filename) {
+        await q(
+          client,
+          `DELETE FROM csv_uploads
+           WHERE part_id = $1 AND pilot_number IS NULL AND filename = $2`,
+          [partId, filename]
+        );
+      }
     } else {
       await q(
         client,
@@ -163,7 +178,7 @@ export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Prom
          WHERE part_id = $1
            AND timing_point_id IS NOT DISTINCT FROM $2
            AND pilot_number IS NULL`,
-        [partId, slot.timingPointId]
+        [partId, pointId]
       );
     }
     await writeCsvSlot(client, partId, slot);

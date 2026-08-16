@@ -528,22 +528,21 @@ export function EventDetailPage() {
                   ...t,
                   parts: t.parts.map((p) => {
                     if (p.id !== part.id) return p;
-                    const csvs =
-                      csvInputModeOf(part) === "combined"
-                        ? [slot]
-                        : (() => {
-                            const next = [...(p.csvs || [])];
-                            const slotPilot = String(slot.pilotNumber || "").trim().toUpperCase();
-                            const idx = slotPilot
-                              ? next.findIndex(
-                                  (c) =>
-                                    String(c.pilotNumber || "").trim().toUpperCase() === slotPilot
-                                )
-                              : next.findIndex((c) => c.timingPointId === slot.timingPointId);
-                            if (idx >= 0) next[idx] = slot;
-                            else next.push(slot);
-                            return next;
-                          })();
+                    const csvs = [...(p.csvs || [])];
+                    const slotPilot = String(slot.pilotNumber || "").trim().toUpperCase();
+                    const pointUuid = /^[0-9a-f-]{36}$/i.test(String(slot.timingPointId || ""));
+                    const idx = slotPilot
+                      ? csvs.findIndex(
+                          (c) =>
+                            String(c.pilotNumber || "").trim().toUpperCase() === slotPilot
+                        )
+                      : csvInputModeOf(part) === "combined" || !pointUuid
+                        ? csvs.findIndex(
+                            (c) => !c.pilotNumber && c.filename === slot.filename
+                          )
+                        : csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+                    if (idx >= 0) csvs[idx] = slot;
+                    else csvs.push(slot);
                     return {
                       ...p,
                       combinedMode: meta.combinedMode,
@@ -1340,12 +1339,15 @@ export function EventDetailPage() {
                                 {csvMode === "combined" ? (
                                   <CsvDrop
                                     label="CSV único"
-                                    hint={
-                                      selectedPart.combinedScoring === "laps"
-                                        ? "Usa columnas Vueltas y T° Transcurrido"
-                                        : "1ª pasada = Start, 2ª = Finish (mismo archivo)"
+                                    hint="Puedes cargar varios CSV (otra salida, otros pilotos o más vueltas). Se unen todos."
+                                    filename={
+                                      selectedPart.csvs
+                                        .filter((c) => !c.pilotNumber)
+                                        .map((c) => c.filename)
+                                        .filter(Boolean)
+                                        .join(" · ") || undefined
                                     }
-                                    filename={selectedPart.csvs[0]?.filename}
+                                    multiple
                                     onFile={(f) =>
                                       uploadCsv(
                                         test.id,
@@ -2065,15 +2067,22 @@ function CsvDrop({
   label,
   hint,
   filename,
+  multiple = false,
   onFile,
 }: {
   label: string;
   hint?: string;
   filename?: string;
+  multiple?: boolean;
   onFile: (f: File) => void;
 }) {
   const [drag, setDrag] = useState(false);
   const loaded = Boolean(filename);
+  const take = (files: FileList | null) => {
+    if (!files?.length) return;
+    const list = multiple ? [...files] : files[0] ? [files[0]] : [];
+    for (const f of list) onFile(f);
+  };
   return (
     <label
       className={`csv-slot ${loaded ? "loaded" : ""} ${drag ? "drag" : ""}`}
@@ -2085,8 +2094,7 @@ function CsvDrop({
       onDrop={(e) => {
         e.preventDefault();
         setDrag(false);
-        const f = e.dataTransfer.files?.[0];
-        if (f) onFile(f);
+        take(e.dataTransfer.files);
       }}
     >
       <span className="csv-slot-label">{label}</span>
@@ -2100,9 +2108,9 @@ function CsvDrop({
       <input
         type="file"
         accept=".csv,text/csv"
+        multiple={multiple}
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
+          take(e.target.files);
           e.target.value = "";
         }}
       />

@@ -605,9 +605,11 @@ router.post(
     }
 
     const slotId =
-      csvMode === "combined" || csvMode === "pilots"
+      csvMode === "pilots"
         ? ctx.firstTimingPointId || timingPointId || "combined"
-        : timingPointId;
+        : csvMode === "combined"
+          ? ""
+          : timingPointId;
 
     const slot = {
       timingPointId: slotId,
@@ -639,8 +641,7 @@ router.post(
             combinedScoring: combinedScoring ?? null,
             expectedLaps: ctx.expectedLaps ?? null,
           }
-        : undefined,
-      csvMode === "combined"
+        : undefined
     );
 
     // Slim slot for the client: race rows + flags are enough for UI/guards.

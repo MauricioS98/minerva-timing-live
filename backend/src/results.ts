@@ -367,48 +367,27 @@ function combinedCsvSlot(part: TestPart): TestPart["csvs"][number] | undefined {
   return best;
 }
 
-function mergedPointParsed(
-  part: TestPart,
-  event: Event,
-  test: Test,
-  fromPointId?: string,
-  toPointId?: string
-): ParsedCsv | null {
-  const slots = (part.csvs || []).filter((s) => s.parsed);
-  if (slots.length === 0) return null;
-
-  const { fromId, toId } = resolveTestTimingPoints(event, test, fromPointId, toPointId);
-  const preferred = [test.startFinishPointId, toId, fromId].filter(Boolean) as string[];
-
-  const lapCount = (parsed: ParsedCsv) =>
-    (parsed.racePassages || []).filter((p) => p.lapTimeMs != null && p.lapTimeMs > 0).length;
-
-  let best = slots[0];
-  let bestScore = -1;
-  for (const slot of slots) {
-    const pref = preferred.indexOf(slot.timingPointId || "");
-    const score = lapCount(slot.parsed) * 1000 + (pref === -1 ? 0 : 100 - pref);
-    if (score > bestScore) {
-      bestScore = score;
-      best = slot;
-    }
-  }
-  return best.parsed;
-}
-
 type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
 
-function parsedFromPart(
+function parsedListFromPart(
   part: TestPart,
-  event: Event,
-  test: Test,
-  fromPointId?: string,
-  toPointId?: string
-): ParsedCsv | null {
-  const mode = csvInputModeOf(part);
-  if (mode === "pilots") return mergedPilotParsed(part, event.pilots || []);
-  if (mode === "combined") return combinedCsvSlot(part)?.parsed ?? null;
-  return mergedPointParsed(part, event, test, fromPointId, toPointId);
+  event: Event
+): ParsedCsv[] {
+  const out: ParsedCsv[] = [];
+  if (csvInputModeOf(part) === "pilots") {
+    const merged = mergedPilotParsed(part, event.pilots || []);
+    if (merged) out.push(merged);
+    for (const s of part.csvs || []) {
+      if (s.parsed && !String(s.pilotNumber || "").trim()) out.push(s.parsed);
+    }
+    return out;
+  }
+  for (const s of part.csvs || []) {
+    if (!s.parsed) continue;
+    const n = String(s.pilotNumber || "").trim();
+    out.push(n ? isolatePilotCsv(s.parsed, n) : s.parsed);
+  }
+  return out;
 }
 
 function isTimePrefix(short: string[], long: string[]): boolean {
@@ -483,8 +462,8 @@ export function computeLapByLapResults(
   event: Event,
   test: Test,
   _part: TestPart,
-  fromPointId?: string,
-  toPointId?: string
+  _fromPointId?: string,
+  _toPointId?: string
 ): { rows: LapByLapRow[]; maxLaps: number; warning?: string } {
   const sources = [...(test.parts || [])].sort((a, b) => a.order - b.order);
   if (sources.length === 0) sources.push(_part);
@@ -493,16 +472,16 @@ export function computeLapByLapResults(
   let anyCsv = false;
 
   for (const src of sources) {
-    const parsed = parsedFromPart(src, event, test, fromPointId, toPointId);
-    if (!parsed) continue;
-    anyCsv = true;
-    for (const p of parsed.racePassages || []) {
-      const key = normalizeNumber(p.number);
-      if (!meta.has(key)) meta.set(key, { number: p.number, name: p.name });
-    }
-    const details = lapDetailsForParsed(parsed);
-    for (const [key, list] of details) {
-      lapDetails.set(key, mergeLapDetailLists(lapDetails.get(key) || [], list));
+    for (const parsed of parsedListFromPart(src, event)) {
+      anyCsv = true;
+      for (const p of parsed.racePassages || []) {
+        const key = normalizeNumber(p.number);
+        if (!meta.has(key)) meta.set(key, { number: p.number, name: p.name });
+      }
+      const details = lapDetailsForParsed(parsed);
+      for (const [key, list] of details) {
+        lapDetails.set(key, mergeLapDetailLists(lapDetails.get(key) || [], list));
+      }
     }
   }
 

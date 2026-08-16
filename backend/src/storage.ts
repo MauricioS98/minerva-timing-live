@@ -211,11 +211,16 @@ function patchEventCacheCsvSlot(
       part.csvs = [slot];
     } else {
       const slotKey = String(slot.pilotNumber || "").trim().toUpperCase();
+      const pointUuid = /^[0-9a-f-]{36}$/i.test(String(slot.timingPointId || ""));
       const idx = slotKey
         ? part.csvs.findIndex(
             (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotKey
           )
-        : part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+        : pointUuid
+          ? part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId)
+          : part.csvs.findIndex(
+              (c) => !c.pilotNumber && c.filename === slot.filename
+            );
       if (idx >= 0) part.csvs[idx] = slot;
       else part.csvs.push(slot);
     }
