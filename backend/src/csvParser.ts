@@ -449,3 +449,56 @@ export function parseTimingCsv(
     deletedSkipped,
   };
 }
+
+function passageKey(p: Passage): string {
+  return `${String(p.number || "")
+    .replace(/^#/, "")
+    .trim()
+    .toUpperCase()}|${p.tmPasosMs}`;
+}
+
+function unionPassages(a: Passage[], b: Passage[]): Passage[] {
+  const map = new Map<string, Passage>();
+  for (const p of [...a, ...b]) {
+    const k = passageKey(p);
+    const cur = map.get(k);
+    if (!cur) {
+      map.set(k, p);
+      continue;
+    }
+    const next = { ...cur };
+    if ((p.lapTimeMs ?? 0) > 0 && (cur.lapTimeMs ?? 0) <= 0) {
+      next.lapTimeMs = p.lapTimeMs;
+      next.lapTimeRaw = p.lapTimeRaw;
+    }
+    if (String(p.name || "").trim() && !String(cur.name || "").trim()) next.name = p.name;
+    if (p.lapsCount != null && (cur.lapsCount == null || p.lapsCount > cur.lapsCount)) {
+      next.lapsCount = p.lapsCount;
+    }
+    map.set(k, next);
+  }
+  return [...map.values()].sort(
+    (x, y) => x.tmPasosMs - y.tmPasosMs || x.rowIndex - y.rowIndex
+  );
+}
+
+/** Keep earlier hits when a later dump of the same CSV only has the last laps. */
+export function unionParsedCsv(prev: ParsedCsv | null | undefined, next: ParsedCsv): ParsedCsv {
+  if (!prev) return next;
+  const flagKey = (f: FlagEvent) => `${f.type}|${f.tmPasosMs}|${f.label}`;
+  const flags = [...(prev.flags || [])];
+  const seen = new Set(flags.map(flagKey));
+  for (const f of next.flags || []) {
+    const k = flagKey(f);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    flags.push(f);
+  }
+  flags.sort((a, b) => a.tmPasosMs - b.tmPasosMs || a.rowIndex - b.rowIndex);
+  return {
+    ...next,
+    passages: unionPassages(prev.passages || [], next.passages || []),
+    racePassages: unionPassages(prev.racePassages || [], next.racePassages || []),
+    flags,
+  };
+}

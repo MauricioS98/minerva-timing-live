@@ -347,10 +347,17 @@ function lapDetailsByPilot(
     };
     const arr = map.get(key)!;
     const lapNo = p.lapsCount;
+    const filled = arr.filter((d) => d?.lapTimeFormatted).length;
     if (lapNo != null && lapNo > 0) {
       const idx = lapNo - 1;
-      if (!arr[idx]?.lapTimeFormatted) arr[idx] = item;
-      else if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) arr.push(item);
+      // Vueltas restarted after a new green: later laps would overwrite 1, 2, …
+      if (filled > 0 && lapNo <= filled && arr[idx]?.lapTimeFormatted) {
+        if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) arr.push(item);
+      } else if (!arr[idx]?.lapTimeFormatted) {
+        arr[idx] = item;
+      } else if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) {
+        arr.push(item);
+      }
     } else {
       arr.push(item);
     }
@@ -449,24 +456,30 @@ function fastestLapRows(
   });
 }
 
-function isTimePrefix(short: string[], long: string[]): boolean {
-  if (short.length === 0 || short.length > long.length) return false;
-  return short.every((t, i) => t === long[i]);
-}
-
-/** Later dump of the same race replaces; a new heat is appended. */
+/** Union laps by clock + time so a later dump does not erase earlier vueltas. */
 function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
-  const aTimes = a.map((d) => d.lapTimeFormatted).filter(Boolean);
-  const bTimes = b.map((d) => d.lapTimeFormatted).filter(Boolean);
-  if (bTimes.length === 0) return a;
-  if (aTimes.length === 0) return b;
-  if (isTimePrefix(aTimes, bTimes)) return b;
-  if (isTimePrefix(bTimes, aTimes)) return a;
-  if (aTimes.length >= bTimes.length) {
-    const tail = aTimes.slice(aTimes.length - bTimes.length);
-    if (tail.every((t, i) => t === bTimes[i])) return a;
+  const keyOf = (d: LapDetail) => {
+    const clock = d.clockFormatted?.trim() || "";
+    const time = d.lapTimeFormatted?.trim() || "";
+    if (!time) return "";
+    return clock ? `${clock}|${time}` : `t:${time}`;
+  };
+  const seen = new Set<string>();
+  const out: LapDetail[] = [];
+  for (const d of [...a, ...b]) {
+    if (!d.lapTimeFormatted) continue;
+    const k = keyOf(d);
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    out.push(d);
   }
-  return [...a, ...b];
+  out.sort((x, y) => {
+    const xc = parseTimeToMs(x.clockFormatted || "") ?? 0;
+    const yc = parseTimeToMs(y.clockFormatted || "") ?? 0;
+    if (xc !== yc) return xc - yc;
+    return 0;
+  });
+  return out.length > 0 ? out : a;
 }
 
 function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {

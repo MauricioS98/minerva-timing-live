@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import type pg from "pg";
 import { pool, withTransaction } from "./db.js";
-import type { Event, PartCsvSlot, Passage, StartOrderVsPair } from "./types.js";
+import type { Event, FlagEvent, PartCsvSlot, Passage, ParsedCsv, StartOrderVsPair } from "./types.js";
+import { unionParsedCsv } from "./csvParser.js";
 
 type Q = pg.PoolClient;
 
@@ -142,6 +143,72 @@ async function writeCsvSlot(client: Q, partId: string, slot: PartCsvSlot): Promi
   await insertFlagsBatch(client, uploadId, parsed.flags || []);
 }
 
+function mapStoredPassage(row: Record<string, unknown>): Passage & { is_race?: boolean } {
+  return {
+    number: String(row.number ?? ""),
+    name: String(row.name ?? ""),
+    tmPasosMs: Number(row.tm_pasos_ms ?? 0),
+    tmPasosRaw: String(row.tm_pasos_raw ?? ""),
+    lapTimeMs: row.lap_time_ms == null ? null : Number(row.lap_time_ms),
+    lapTimeRaw: String(row.lap_time_raw ?? ""),
+    lapsCount: row.laps_count == null ? null : Number(row.laps_count),
+    elapsedMs: row.elapsed_ms == null ? null : Number(row.elapsed_ms),
+    clase: String(row.clase ?? ""),
+    rowIndex: Number(row.row_index ?? 0),
+    is_race: Boolean(row.is_race),
+  };
+}
+
+async function loadExistingCombinedParsed(
+  client: Q,
+  partId: string,
+  filename: string
+): Promise<ParsedCsv | null> {
+  const up = await q(
+    client,
+    `SELECT id, filename FROM csv_uploads
+     WHERE part_id = $1 AND filename = $2 AND pilot_number IS NULL
+     LIMIT 1`,
+    [partId, filename]
+  );
+  if (!up.rows[0]) return null;
+  const uploadId = String(up.rows[0].id);
+  const [passRes, flagRes] = await Promise.all([
+    q(
+      client,
+      `SELECT * FROM csv_passages WHERE csv_upload_id = $1 ORDER BY row_index, id`,
+      [uploadId]
+    ),
+    q(
+      client,
+      `SELECT * FROM csv_flags WHERE csv_upload_id = $1 ORDER BY row_index, id`,
+      [uploadId]
+    ),
+  ]);
+  const mapped = passRes.rows.map((r) => mapStoredPassage(r as Record<string, unknown>));
+  const passages: Passage[] = [];
+  const racePassages: Passage[] = [];
+  for (const p of mapped) {
+    const { is_race, ...passage } = p;
+    passages.push(passage);
+    if (is_race) racePassages.push(passage);
+  }
+  if (racePassages.length === 0 && passages.length > 0) racePassages.push(...passages);
+  const flags: FlagEvent[] = flagRes.rows.map((r) => ({
+    type: String(r.flag_type) as FlagEvent["type"],
+    tmPasosMs: Number(r.tm_pasos_ms || 0),
+    tmPasosRaw: String(r.tm_pasos_raw || ""),
+    label: String(r.label || ""),
+    rowIndex: Number(r.row_index || 0),
+  }));
+  return {
+    filename,
+    passages,
+    racePassages,
+    flags,
+  };
+}
+
 /**
  * Replace a single CSV slot (timing point) for a part.
  * Does NOT rewrite sibling slots — important when ARCO + CAJONES are uploaded separately.
@@ -162,8 +229,12 @@ export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Prom
         [partId, pilotNumber]
       );
     } else if (!pointId) {
-      // CSV único: several files per salida (NULL timing_point_id). Replace by filename only.
+      // CSV único: several files per salida (NULL timing_point_id). Replace by filename.
       if (filename) {
+        const existing = await loadExistingCombinedParsed(client, partId, filename);
+        if (existing && slot.parsed) {
+          slot.parsed = unionParsedCsv(existing, slot.parsed);
+        }
         await q(
           client,
           `DELETE FROM csv_uploads
