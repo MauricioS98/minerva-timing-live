@@ -191,4 +191,14 @@ export async function ensureDbSchema(): Promise<void> {
     await pool.query(fs.readFileSync(migPath, "utf8"));
     console.log("Migración overlay_paging aplicada");
   }
+
+  const combinedFileIdx = await pool.query<{ indexname: string }>(
+    `SELECT indexname FROM pg_indexes
+     WHERE schemaname = 'public' AND indexname = 'csv_uploads_part_combined_file_uq'`
+  );
+  if (!combinedFileIdx.rows[0]) {
+    const migPath = path.resolve(__dirname, "../../db/12_csv_unique_multi.sql");
+    await pool.query(fs.readFileSync(migPath, "utf8"));
+    console.log("Migración csv_unique_multi aplicada");
+  }
 }

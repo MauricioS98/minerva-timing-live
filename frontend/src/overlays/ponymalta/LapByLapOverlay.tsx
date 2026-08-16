@@ -52,12 +52,12 @@ export function LapByLapOverlayPage() {
   const [pageHoldSeconds, setPageHoldSeconds] = useState(10);
 
   const load = useCallback(async () => {
-    if (!id || !testId || !partId) {
-      setError("Falta la prueba o la salida en la URL.");
+    if (!id || !testId) {
+      setError("Falta la prueba en la URL.");
       return;
     }
     try {
-      const data = await api.getLapByLap(id, testId, { partId });
+      const data = await api.getLapByLap(id, testId, partId ? { partId } : {});
       setTitle(data.title || "");
       setMaxLaps(data.maxLaps || 0);
       setPageHoldSeconds(data.event.boardPageSeconds ?? 10);
@@ -88,7 +88,7 @@ export function LapByLapOverlayPage() {
 
   return (
     <LapByLapOverlay
-      error={!id || !testId || !partId ? "Falta la prueba o la salida en la URL." : error}
+      error={!id || !testId ? "Falta la prueba en la URL." : error}
       title={title}
       maxLaps={maxLaps}
       allRows={allRows}

@@ -245,6 +245,26 @@ function lapResultsByPilot(parsed: ParsedCsv): Map<string, LapPilotResult> {
   return result;
 }
 
+function mergedLapResultsFromPart(
+  part: TestPart,
+  event: Event
+): Map<string, LapPilotResult> {
+  const result = new Map<string, LapPilotResult>();
+  for (const parsed of parsedListFromPart(part, event)) {
+    for (const [key, p] of lapResultsByPilot(parsed)) {
+      const prev = result.get(key);
+      if (!prev) {
+        result.set(key, p);
+        continue;
+      }
+      const better =
+        p.laps > prev.laps || (p.laps === prev.laps && p.totalTimeMs < prev.totalTimeMs);
+      if (better) result.set(key, p);
+    }
+  }
+  return result;
+}
+
 function enrichLap(
   pilots: Pilot[],
   number: string,
@@ -344,27 +364,6 @@ function lapDetailsByPilot(
     );
   }
   return dense;
-}
-
-function lapHitCount(parsed: ParsedCsv | undefined | null): number {
-  return (parsed?.racePassages || []).filter((p) => p.lapTimeMs != null && p.lapTimeMs > 0).length;
-}
-
-/** CSV único: never blindly use csvs[0] (leftover por-punto slots). */
-function combinedCsvSlot(part: TestPart): TestPart["csvs"][number] | undefined {
-  const slots = (part.csvs || []).filter((s) => s.parsed && !String(s.pilotNumber || "").trim());
-  const pool = slots.length > 0 ? slots : (part.csvs || []).filter((s) => s.parsed);
-  if (pool.length === 0) return undefined;
-  let best = pool[0];
-  let bestScore = -1;
-  for (const slot of pool) {
-    const score = lapHitCount(slot.parsed) * 1000 + (slot.parsed.racePassages || []).length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = slot;
-    }
-  }
-  return best;
 }
 
 type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
@@ -561,6 +560,12 @@ export function computeLapByLapResults(
   });
 
   const maxLaps = Math.max(expected ?? 0, ...rows.map((r) => r.lapTimesFormatted.length), 0);
+  if (maxLaps > 0) {
+    for (const r of rows) {
+      while (r.lapTimesFormatted.length < maxLaps) r.lapTimesFormatted.push("");
+      while (r.lapClockTimesFormatted.length < maxLaps) r.lapClockTimesFormatted.push("");
+    }
+  }
 
   if (rows.length === 0) {
     return { rows: [], maxLaps: 0, warning: "No se encontraron vueltas completadas en el CSV." };
@@ -1052,11 +1057,13 @@ export function computePartResults(
   }
 
   if (part.combinedMode || csvInputModeOf(part) === "combined") {
-    const slot = combinedCsvSlot(part);
-    if (!slot) return { rows: [], warning: "No hay CSV cargado en esta parte.", scope };
+    const parsedFiles = parsedListFromPart(part, event);
+    if (parsedFiles.length === 0) {
+      return { rows: [], warning: "No hay CSV cargado en esta parte.", scope };
+    }
 
     if (isLapScoring(part)) {
-      const byPilot = lapResultsByPilot(slot.parsed);
+      const byPilot = mergedLapResultsFromPart(part, event);
       const rows: ResultRow[] = [];
       for (const [, p] of byPilot) {
         rows.push(enrichLap(pilots, p.number, p.name, p.laps, p.totalTimeMs, part));
@@ -1080,35 +1087,44 @@ export function computePartResults(
       };
     }
 
-    const byPilot = combinedStartFinishByPilot(slot.parsed);
-    const complete: ResultRow[] = byPilot.complete.map((p) =>
-      enrich(
-        pilots,
-        p.number,
-        p.name,
-        p.timeMs,
-        p.via === "passages"
-          ? "CSV único (Start → Finish, mismo archivo)"
-          : "CSV único (Tiempo de vuelta)",
-        part
-      )
-    );
-    const incomplete: ResultRow[] = byPilot.incomplete.map((p) =>
-      enrichIncomplete(
-        pilots,
-        p.number,
-        p.name,
-        "missing_finish",
-        "Start",
-        "Finish (2ª pasada)",
-        part
-      )
-    );
+    const complete: ResultRow[] = [];
+    const incomplete: ResultRow[] = [];
+    const seen = new Set<string>();
+    let nonPositive = 0;
+    for (const parsed of parsedFiles) {
+      const byPilot = combinedStartFinishByPilot(parsed);
+      nonPositive += byPilot.nonPositive;
+      for (const p of byPilot.complete) {
+        const key = normalizeNumber(p.number);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        complete.push(
+          enrich(
+            pilots,
+            p.number,
+            p.name,
+            p.timeMs,
+            p.via === "passages"
+              ? "CSV único (Start → Finish, mismo archivo)"
+              : "CSV único (Tiempo de vuelta)",
+            part
+          )
+        );
+      }
+      for (const p of byPilot.incomplete) {
+        const key = normalizeNumber(p.number);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        incomplete.push(
+          enrichIncomplete(pilots, p.number, p.name, p.reason, "Start", "Finish", part)
+        );
+      }
+    }
     if (complete.length === 0 && incomplete.length === 0) {
       return {
         rows: [],
         warning:
-          byPilot.nonPositive > 0
+          nonPositive > 0
             ? "Hay pasadas, pero el tiempo Start→Finish salió ≤ 0. Revisa el orden de Tm de pasos en el CSV."
             : "No se encontraron 2 pasadas (Start/Finish) ni tiempos de vuelta (> 0) en el CSV único.",
         scope,
@@ -1117,8 +1133,8 @@ export function computePartResults(
     return {
       rows: mergeCompleteAndIncomplete(complete, incomplete, test.penalties, scope),
       warning:
-        byPilot.nonPositive > 0
-          ? `${byPilot.nonPositive} piloto(s) con tiempo ≤ 0 entre 1ª y 2ª pasada.`
+        nonPositive > 0
+          ? `${nonPositive} piloto(s) con tiempo ≤ 0 entre 1ª y 2ª pasada.`
           : undefined,
       scope,
     };

@@ -581,7 +581,10 @@ router.post(
     if (!ctx) return res.status(404).json({ error: "Parte no encontrada" });
     if (!req.file) return res.status(400).json({ error: "Archivo CSV requerido" });
 
-    const csvMode = csvInputModeOf(ctx);
+    const bodyCombined =
+      req.body.combinedMode === "true" || req.body.combinedMode === true;
+    let csvMode = csvInputModeOf(ctx);
+    if (bodyCombined && csvMode === "points") csvMode = "combined";
     const timingPointId = String(req.body.timingPointId || "");
     const pilotNumber = String(req.body.pilotNumber || "").trim();
     if (csvMode === "pilots") {
@@ -618,12 +621,18 @@ router.post(
       ...(csvMode === "pilots" ? { pilotNumber } : {}),
     };
 
-    let combinedMode = ctx.combinedMode;
-    let csvInputMode = ctx.csvInputMode;
+    let combinedMode = ctx.combinedMode || csvMode === "combined";
+    let csvInputMode = csvMode;
     let combinedScoring = ctx.combinedScoring;
-    let metaChanged = false;
+    let metaChanged = csvMode !== csvInputModeOf(ctx);
     const hasLaps = parsed.racePassages.some((p) => p.lapTimeMs != null && p.lapTimeMs > 0);
-    if (hasLaps && req.body.combinedMode === "true" && csvMode === "points") {
+    if (hasLaps && bodyCombined && csvInputModeOf(ctx) === "points") {
+      combinedMode = true;
+      csvInputMode = "combined";
+      combinedScoring = combinedScoring ?? "time";
+      metaChanged = true;
+    }
+    if (csvMode === "combined") {
       combinedMode = true;
       csvInputMode = "combined";
       combinedScoring = combinedScoring ?? "time";
@@ -728,9 +737,9 @@ router.get("/events/:id/tests/:testId/laps", async (req, res) => {
   if (!test) return res.status(404).json({ error: "Prueba no encontrada" });
 
   const partId = String(req.query.partId || "").trim();
-  if (!partId) return res.status(400).json({ error: "Indica la salida (partId)." });
-  const part = getPart(test, partId);
-  if (!part) return res.status(404).json({ error: "Parte no encontrada" });
+  const part = partId ? getPart(test, partId) : (test.parts || [])[0];
+  if (partId && !part) return res.status(404).json({ error: "Parte no encontrada" });
+  if (!part) return res.status(400).json({ error: "La prueba no tiene salidas." });
 
   const fromPointId = req.query.from as string | undefined;
   const toPointId = req.query.to as string | undefined;

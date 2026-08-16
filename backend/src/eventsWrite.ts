@@ -162,7 +162,7 @@ export async function upsertPartCsvSlot(partId: string, slot: PartCsvSlot): Prom
         [partId, pilotNumber]
       );
     } else if (!pointId) {
-      // CSV único: several files per salida (NULL timing_point_id). Replace by filename.
+      // CSV único: several files per salida (NULL timing_point_id). Replace by filename only.
       if (filename) {
         await q(
           client,

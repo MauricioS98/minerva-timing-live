@@ -178,7 +178,11 @@ CREATE TABLE csv_uploads (
 
 CREATE UNIQUE INDEX csv_uploads_part_point_uq
   ON csv_uploads (part_id, timing_point_id)
-  WHERE pilot_number IS NULL;
+  WHERE pilot_number IS NULL AND timing_point_id IS NOT NULL;
+
+CREATE UNIQUE INDEX csv_uploads_part_combined_file_uq
+  ON csv_uploads (part_id, filename)
+  WHERE pilot_number IS NULL AND timing_point_id IS NULL;
 
 CREATE UNIQUE INDEX csv_uploads_part_pilot_uq
   ON csv_uploads (part_id, lower(btrim(pilot_number)))

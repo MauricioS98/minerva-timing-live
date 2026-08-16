@@ -1349,12 +1349,7 @@ export function EventDetailPage() {
                                     }
                                     multiple
                                     onFile={(f) =>
-                                      uploadCsv(
-                                        test.id,
-                                        selectedPart,
-                                        points[0]?.id || "combined",
-                                        f
-                                      )
+                                      uploadCsv(test.id, selectedPart, "", f)
                                     }
                                   />
                                 ) : csvMode === "pilots" ? (
@@ -2073,14 +2068,16 @@ function CsvDrop({
   hint?: string;
   filename?: string;
   multiple?: boolean;
-  onFile: (f: File) => void;
+  onFile: (f: File) => void | Promise<void>;
 }) {
   const [drag, setDrag] = useState(false);
   const loaded = Boolean(filename);
   const take = (files: FileList | null) => {
     if (!files?.length) return;
     const list = multiple ? [...files] : files[0] ? [files[0]] : [];
-    for (const f of list) onFile(f);
+    void (async () => {
+      for (const f of list) await onFile(f);
+    })();
   };
   return (
     <label
