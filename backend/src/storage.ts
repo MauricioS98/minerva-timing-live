@@ -162,6 +162,33 @@ export async function savePartCsvs(partId: string, csvs: PartCsvSlot[]): Promise
   invalidateEventCache();
 }
 
+function applyPartMeta(
+  part: { combinedMode?: boolean; csvInputMode?: string; combinedScoring?: string; expectedLaps?: number | null },
+  partMeta?: {
+    combinedMode?: boolean;
+    csvInputMode?: string | null;
+    combinedScoring?: string | null;
+    expectedLaps?: number | null;
+  }
+): void {
+  if (!partMeta) return;
+  if (partMeta.combinedMode !== undefined) part.combinedMode = Boolean(partMeta.combinedMode);
+  if (
+    partMeta.csvInputMode === "pilots" ||
+    partMeta.csvInputMode === "combined" ||
+    partMeta.csvInputMode === "points"
+  ) {
+    part.csvInputMode = partMeta.csvInputMode;
+  }
+  if (partMeta.combinedScoring !== undefined) {
+    part.combinedScoring =
+      partMeta.combinedScoring === "laps" || partMeta.combinedScoring === "time"
+        ? partMeta.combinedScoring
+        : part.combinedScoring;
+  }
+  if (partMeta.expectedLaps !== undefined) part.expectedLaps = partMeta.expectedLaps;
+}
+
 /** Patch cached event with one CSV slot instead of forcing a full DB reload. */
 function patchEventCacheCsvSlot(
   eventId: string,
@@ -172,38 +199,27 @@ function patchEventCacheCsvSlot(
     csvInputMode?: string | null;
     combinedScoring?: string | null;
     expectedLaps?: number | null;
-  }
+  },
+  replaceAll = false
 ): void {
   const hit = eventCache.get(eventId);
   if (!hit) return;
   for (const test of hit.event.tests || []) {
     const part = (test.parts || []).find((p) => p.id === partId);
     if (!part) continue;
-    const slotKey = String(slot.pilotNumber || "").trim().toUpperCase();
-    const idx = slotKey
-      ? part.csvs.findIndex(
-          (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotKey
-        )
-      : part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
-    if (idx >= 0) part.csvs[idx] = slot;
-    else part.csvs.push(slot);
-    if (partMeta) {
-      if (partMeta.combinedMode !== undefined) part.combinedMode = Boolean(partMeta.combinedMode);
-      if (
-        partMeta.csvInputMode === "pilots" ||
-        partMeta.csvInputMode === "combined" ||
-        partMeta.csvInputMode === "points"
-      ) {
-        part.csvInputMode = partMeta.csvInputMode;
-      }
-      if (partMeta.combinedScoring !== undefined) {
-        part.combinedScoring =
-          partMeta.combinedScoring === "laps" || partMeta.combinedScoring === "time"
-            ? partMeta.combinedScoring
-            : part.combinedScoring;
-      }
-      if (partMeta.expectedLaps !== undefined) part.expectedLaps = partMeta.expectedLaps;
+    if (replaceAll) {
+      part.csvs = [slot];
+    } else {
+      const slotKey = String(slot.pilotNumber || "").trim().toUpperCase();
+      const idx = slotKey
+        ? part.csvs.findIndex(
+            (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotKey
+          )
+        : part.csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
+      if (idx >= 0) part.csvs[idx] = slot;
+      else part.csvs.push(slot);
     }
+    applyPartMeta(part, partMeta);
     hit.event.updatedAt = new Date().toISOString();
     hit.at = Date.now();
     return;
@@ -220,15 +236,20 @@ export async function savePartCsvSlot(
     csvInputMode?: string | null;
     combinedScoring?: string | null;
     expectedLaps?: number | null;
-  }
+  },
+  replaceAll = false
 ): Promise<void> {
   if (partMeta) {
     await updatePartCsvMeta(partId, partMeta);
   }
-  await upsertPartCsvSlot(partId, slot);
+  if (replaceAll) {
+    await replacePartCsvs(partId, [slot]);
+  } else {
+    await upsertPartCsvSlot(partId, slot);
+  }
   // Prefer in-place cache patch — invalidating forces a multi-MB reload of all CSVs.
   if (eventCache.has(eventId)) {
-    patchEventCacheCsvSlot(eventId, partId, slot, partMeta);
+    patchEventCacheCsvSlot(eventId, partId, slot, partMeta, replaceAll);
   }
 }
 

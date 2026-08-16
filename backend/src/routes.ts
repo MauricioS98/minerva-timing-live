@@ -65,7 +65,7 @@ function sanitizeStartOrderVs(raw: unknown): StartOrderVsPair[] {
   return out;
 }
 import { parseOffsetToMs, formatOffset } from "./timeUtils.js";
-import { parseTimingCsv } from "./csvParser.js";
+import { parseTimingCsv, isolatePilotCsv } from "./csvParser.js";
 import {
   assertCanDeleteEvent,
   assertCanDeletePart,
@@ -601,12 +601,7 @@ router.post(
         : ctx.csvSource;
     let parsed = parseTimingCsv(content, req.file.originalname, preference);
     if (csvMode === "pilots" && pilotNumber) {
-      const stamp = <T extends { number: string }>(p: T): T => ({ ...p, number: pilotNumber });
-      parsed = {
-        ...parsed,
-        passages: (parsed.passages || []).map(stamp),
-        racePassages: (parsed.racePassages || []).map(stamp),
-      };
+      parsed = isolatePilotCsv(parsed, pilotNumber);
     }
 
     const slotId =
@@ -644,7 +639,8 @@ router.post(
             combinedScoring: combinedScoring ?? null,
             expectedLaps: ctx.expectedLaps ?? null,
           }
-        : undefined
+        : undefined,
+      csvMode === "combined"
     );
 
     // Slim slot for the client: race rows + flags are enough for UI/guards.

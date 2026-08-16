@@ -528,15 +528,22 @@ export function EventDetailPage() {
                   ...t,
                   parts: t.parts.map((p) => {
                     if (p.id !== part.id) return p;
-                    const csvs = [...(p.csvs || [])];
-                    const slotPilot = String(slot.pilotNumber || "").trim().toUpperCase();
-                    const idx = slotPilot
-                      ? csvs.findIndex(
-                          (c) => String(c.pilotNumber || "").trim().toUpperCase() === slotPilot
-                        )
-                      : csvs.findIndex((c) => c.timingPointId === slot.timingPointId);
-                    if (idx >= 0) csvs[idx] = slot;
-                    else csvs.push(slot);
+                    const csvs =
+                      csvInputModeOf(part) === "combined"
+                        ? [slot]
+                        : (() => {
+                            const next = [...(p.csvs || [])];
+                            const slotPilot = String(slot.pilotNumber || "").trim().toUpperCase();
+                            const idx = slotPilot
+                              ? next.findIndex(
+                                  (c) =>
+                                    String(c.pilotNumber || "").trim().toUpperCase() === slotPilot
+                                )
+                              : next.findIndex((c) => c.timingPointId === slot.timingPointId);
+                            if (idx >= 0) next[idx] = slot;
+                            else next.push(slot);
+                            return next;
+                          })();
                     return {
                       ...p,
                       combinedMode: meta.combinedMode,

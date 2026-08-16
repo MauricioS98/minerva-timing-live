@@ -1,5 +1,6 @@
 import { normalizeNumber } from "./storage.js";
 import { formatMs, parseTimeToMs } from "./timeUtils.js";
+import { isolatePilotCsv } from "./csvParser.js";
 import type {
   Event,
   ParsedCsv,
@@ -315,17 +316,55 @@ export interface LapByLapRow {
 function lapDetailsByPilot(
   parsed: ParsedCsv
 ): Map<string, { lapTimeFormatted: string; clockFormatted: string }[]> {
-  const map = new Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>();
+  const map = new Map<string, ({ lapTimeFormatted: string; clockFormatted: string } | undefined)[]>();
   for (const p of parsed.racePassages) {
     if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
     const key = normalizeNumber(p.number);
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({
+    const item = {
       lapTimeFormatted: formatMs(p.lapTimeMs),
       clockFormatted: p.tmPasosRaw?.trim() || formatMs(p.tmPasosMs, true),
-    });
+    };
+    const arr = map.get(key)!;
+    const lapNo = p.lapsCount;
+    if (lapNo != null && lapNo > 0) arr[lapNo - 1] = item;
+    else arr.push(item);
   }
-  return map;
+  const dense = new Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>();
+  for (const [key, arr] of map) {
+    dense.set(
+      key,
+      Array.from({ length: arr.length }, (_, i) => {
+        const d = arr[i];
+        return {
+          lapTimeFormatted: d?.lapTimeFormatted || "",
+          clockFormatted: d?.clockFormatted || "",
+        };
+      })
+    );
+  }
+  return dense;
+}
+
+function lapHitCount(parsed: ParsedCsv | undefined | null): number {
+  return (parsed?.racePassages || []).filter((p) => p.lapTimeMs != null && p.lapTimeMs > 0).length;
+}
+
+/** CSV único: never blindly use csvs[0] (leftover por-punto slots). */
+function combinedCsvSlot(part: TestPart): TestPart["csvs"][number] | undefined {
+  const slots = (part.csvs || []).filter((s) => s.parsed && !String(s.pilotNumber || "").trim());
+  const pool = slots.length > 0 ? slots : (part.csvs || []).filter((s) => s.parsed);
+  if (pool.length === 0) return undefined;
+  let best = pool[0];
+  let bestScore = -1;
+  for (const slot of pool) {
+    const score = lapHitCount(slot.parsed) * 1000 + (slot.parsed.racePassages || []).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = slot;
+    }
+  }
+  return best;
 }
 
 function mergedPointParsed(
@@ -366,7 +405,7 @@ function parsedForLapByLap(
 ): ParsedCsv | null {
   const mode = csvInputModeOf(part);
   if (mode === "pilots") return mergedPilotParsed(part, event.pilots || []);
-  if (mode === "combined") return part.csvs[0]?.parsed ?? null;
+  if (mode === "combined") return combinedCsvSlot(part)?.parsed ?? null;
   return mergedPointParsed(part, event, test, fromPointId, toPointId);
 }
 
@@ -454,7 +493,7 @@ export function computeLapByLapResults(
     rows.push({
       position: 0,
       number: s.number,
-      name: pilot?.name || s.name,
+      name: (pilot?.name || s.name || s.number).trim() || s.number,
       category: pilot?.category || "",
       league: pilot?.league || "",
       lapTimesFormatted: details.map((d) => d.lapTimeFormatted),
@@ -467,18 +506,20 @@ export function computeLapByLapResults(
   }
 
   const { fromId, toId } = resolveTestTimingPoints(event, test, fromPointId, toPointId);
-  const { rows: partRows } = computePartResults(event, test, part, fromId, toId);
-  const { rows: filteredPartRows } = filterNewPilotsVsEarlier(
-    event,
-    test,
-    part,
-    partRows,
-    fromId,
-    toId
-  );
-  if (filteredPartRows.length > 0) {
-    const allowed = new Set(filteredPartRows.map((r) => normalizeNumber(r.number)));
-    rows = rows.filter((r) => allowed.has(normalizeNumber(r.number)));
+  if (csvInputModeOf(part) === "points") {
+    const { rows: partRows } = computePartResults(event, test, part, fromId, toId);
+    const { rows: filteredPartRows } = filterNewPilotsVsEarlier(
+      event,
+      test,
+      part,
+      partRows,
+      fromId,
+      toId
+    );
+    if (filteredPartRows.length > 0) {
+      const allowed = new Set(filteredPartRows.map((r) => normalizeNumber(r.number)));
+      rows = rows.filter((r) => allowed.has(normalizeNumber(r.number)));
+    }
   }
 
   rows.sort((a, b) => {
@@ -850,7 +891,8 @@ function mergedPilotParsed(part: TestPart, pilots: Pilot[]): ParsedCsv | null {
     const number = String(slot.pilotNumber || "").trim();
     if (!number) continue;
     const name = pilots.find((p) => normalizeNumber(p.number) === normalizeNumber(number))?.name || "";
-    const stamped = stampPassagesToPilot(slot.parsed, number, name);
+    const isolated = isolatePilotCsv(slot.parsed, number);
+    const stamped = stampPassagesToPilot(isolated, number, name);
     passages.push(...(stamped.passages || []));
     racePassages.push(...(stamped.racePassages || []));
     flags.push(...(stamped.flags || []));
@@ -879,7 +921,7 @@ function computePilotCsvResults(
         pilots.find((p) => normalizeNumber(p.number) === normalizeNumber(number))?.name || "";
       return {
         ...slot,
-        parsed: stampPassagesToPilot(slot.parsed, number, name),
+        parsed: stampPassagesToPilot(isolatePilotCsv(slot.parsed, number), number, name),
       };
     }),
   };
@@ -972,7 +1014,7 @@ export function computePartResults(
   }
 
   if (part.combinedMode || csvInputModeOf(part) === "combined") {
-    const slot = part.csvs[0];
+    const slot = combinedCsvSlot(part);
     if (!slot) return { rows: [], warning: "No hay CSV cargado en esta parte.", scope };
 
     if (isLapScoring(part)) {

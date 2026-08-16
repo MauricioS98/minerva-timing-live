@@ -21,7 +21,7 @@ function classifyFlag(nombre: string, numero: string): FlagType | null {
   return null;
 }
 
-function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string, delimiter = ","): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -34,7 +34,7 @@ function parseCsvLine(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (ch === "," && !inQuotes) {
+    } else if (ch === delimiter && !inQuotes) {
       result.push(current);
       current = "";
     } else {
@@ -43,6 +43,30 @@ function parseCsvLine(line: string): string[] {
   }
   result.push(current);
   return result;
+}
+
+function countDelimiter(line: string, delimiter: string): number {
+  let n = 0;
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') i++;
+      else inQuotes = !inQuotes;
+    } else if (!inQuotes && ch === delimiter) n++;
+  }
+  return n;
+}
+
+/** Google Sheets / Excel (es) often export `;` instead of `,`. */
+function detectDelimiter(headerLine: string): string {
+  const line = unwrapCsvLine(headerLine);
+  const comma = countDelimiter(line, ",");
+  const semi = countDelimiter(line, ";");
+  const tab = countDelimiter(line, "\t");
+  if (semi > comma && semi >= tab) return ";";
+  if (tab > comma && tab > semi) return "\t";
+  return ",";
 }
 
 /**
@@ -61,8 +85,8 @@ function unwrapCsvLine(line: string): string {
   return trimmed;
 }
 
-function parseCsvRow(line: string): string[] {
-  return parseCsvLine(unwrapCsvLine(line)).map((h) => h.trim());
+function parseCsvRow(line: string, delimiter = ","): string[] {
+  return parseCsvLine(unwrapCsvLine(line), delimiter).map((h) => h.trim());
 }
 
 function normalizeHeader(h: string): string {
@@ -96,11 +120,38 @@ function findCol(headers: string[], ...names: string[]): number {
 /** Orbits "N°" column — never the leading "#" row index. */
 function findPilotNumberCol(headers: string[]): number {
   const byName = findCol(headers, "n°", "nº", "numero", "n");
-  if (byName >= 0) return byName;
-  // Plain "N" / "No" after stripping accents/mojibake (not "Nombre")
+  if (byName >= 0 && normalizeHeader(headers[byName]) !== "#") return byName;
+  // Plain "N" / "No" after stripping accents/mojibake (not "Nombre" or "#")
   const normalized = headers.map(normalizeHeader);
   const idx = normalized.findIndex((h) => h === "n" || h === "no");
   return idx;
+}
+
+/**
+ * CSV por piloto: keep rows of that N° when the file has several pilots
+ * (e.g. the same Orbits dump assigned to 4A). If the number is absent,
+ * stamp every race row to the selected pilot (single-pilot export).
+ */
+export function isolatePilotCsv(parsed: ParsedCsv, pilotNumber: string): ParsedCsv {
+  const wanted = String(pilotNumber || "").trim();
+  if (!wanted) return parsed;
+  const key = normalizePilotKey(wanted);
+  const match = (p: Passage) => normalizePilotKey(p.number) === key;
+  const passages = (parsed.passages || []).filter(match);
+  const racePassages = (parsed.racePassages || []).filter(match);
+  const stamp = (p: Passage): Passage => ({ ...p, number: wanted });
+  if (passages.length === 0 && racePassages.length === 0) {
+    return {
+      ...parsed,
+      passages: (parsed.passages || []).map(stamp),
+      racePassages: (parsed.racePassages || []).map(stamp),
+    };
+  }
+  return {
+    ...parsed,
+    passages: passages.map(stamp),
+    racePassages: (racePassages.length > 0 ? racePassages : passages).map(stamp),
+  };
 }
 
 /**
@@ -276,7 +327,8 @@ export function parseTimingCsv(
     };
   }
 
-  const headers = parseCsvRow(lines[0]);
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = parseCsvRow(lines[0], delimiter);
   const sourceFormat = resolveCsvSourceFormat(headers, preference);
   const colNumero = findPilotNumberCol(headers);
   const colNombre = findCol(headers, "nombre");
@@ -302,7 +354,7 @@ export function parseTimingCsv(
   let deletedSkipped = 0;
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvRow(lines[i]);
+    const cols = parseCsvRow(lines[i], delimiter);
     const numero = (cols[colNumero] ?? "").trim();
     const nombre = colNombre >= 0 ? (cols[colNombre] ?? "").trim() : "";
     const tmRaw = (cols[colTm] ?? "").trim();
