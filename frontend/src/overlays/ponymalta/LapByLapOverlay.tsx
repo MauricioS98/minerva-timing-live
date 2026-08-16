@@ -14,10 +14,11 @@ const PANEL_EASE_MS = 600;
 const PM_POS_COL = 76;
 const PM_NAME_COL = 428;
 const PM_LAP_COL = 188;
-const LAPS_PER_PAGE = Math.max(
-  1,
-  Math.floor((1620 - PM_POS_COL - PM_NAME_COL) / PM_LAP_COL)
-);
+const PM_BOARD_MAX = 1620;
+const PM_LAP_AREA = PM_BOARD_MAX - PM_POS_COL - PM_NAME_COL;
+const MIN_LAP_COL = 100;
+const FIT_LAPS = Math.max(1, Math.floor(PM_LAP_AREA / MIN_LAP_COL));
+const MANUAL_LAPS_PER_PAGE = 5;
 
 type LapViewRow = {
   key: string;
@@ -54,8 +55,13 @@ export function LapByLapOverlayPage() {
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [maxLaps, setMaxLaps] = useState(0);
+  const [lapsHighWater, setLapsHighWater] = useState(0);
   const [allRows, setAllRows] = useState<LapViewRow[]>([]);
   const [pageHoldSeconds, setPageHoldSeconds] = useState(10);
+
+  useEffect(() => {
+    setLapsHighWater(0);
+  }, [id, testId, partId]);
 
   const load = useCallback(async () => {
     if (!id || !testId) {
@@ -65,16 +71,20 @@ export function LapByLapOverlayPage() {
     try {
       const data = await api.getLapByLap(id, testId, partId ? { partId } : {});
       setTitle(data.title || "");
-      setMaxLaps(data.maxLaps || 0);
       setPageHoldSeconds(data.event.boardPageSeconds ?? 10);
-      setAllRows(
-        data.rows.slice(0, top).map((r) => ({
-          key: String(r.number || `p${r.position}`),
-          position: r.position,
-          name: r.name || "—",
-          laps: r.lapTimesFormatted || [],
-        }))
+      const rows = data.rows.slice(0, top).map((r) => ({
+        key: String(r.number || `p${r.position}`),
+        position: r.position,
+        name: r.name || "—",
+        laps: r.lapTimesFormatted || [],
+      }));
+      const filled = Math.max(
+        data.maxLaps || 0,
+        ...rows.map((r) => r.laps.filter(Boolean).length)
       );
+      setLapsHighWater((h) => Math.max(h, filled));
+      setMaxLaps(filled);
+      setAllRows(rows);
       setError(data.warning || "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -96,7 +106,7 @@ export function LapByLapOverlayPage() {
     <LapByLapOverlay
       error={!id || !testId ? "Falta la prueba en la URL." : error}
       title={title}
-      maxLaps={maxLaps}
+      maxLaps={Math.max(maxLaps, lapsHighWater)}
       allRows={allRows}
       pageHoldSeconds={pageHoldSeconds}
       pagingMode={control.overlayPagingMode}
@@ -127,12 +137,9 @@ function LapByLapOverlay({
 }) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const totalLaps = Math.max(1, maxLaps);
-  const lapsShown =
-    totalLaps > LAPS_PER_PAGE ? LAPS_PER_PAGE : totalLaps;
-  const lapCol = PM_LAP_COL;
-
+  const lapPageCount =
+    pagingMode === "manual" ? Math.max(1, Math.ceil(totalLaps / MANUAL_LAPS_PER_PAGE)) : 1;
   const pilotPageCount = Math.max(1, Math.ceil(allRows.length / PILOT_PAGE_SIZE) || 1);
-  const lapPageCount = Math.max(1, Math.ceil(totalLaps / LAPS_PER_PAGE));
   const screenCount = pilotPageCount * lapPageCount;
   const [page, setPage] = useState(0);
   const [exiting, setExiting] = useState(false);
@@ -157,7 +164,18 @@ function LapByLapOverlay({
     lapPageCount,
     pilotPageCount
   );
-  const lapOffset = safeLapPage * LAPS_PER_PAGE;
+  const lapOffset =
+    pagingMode === "manual"
+      ? safeLapPage * MANUAL_LAPS_PER_PAGE
+      : Math.max(0, totalLaps - Math.min(FIT_LAPS, totalLaps));
+  const lapsShown =
+    pagingMode === "manual"
+      ? Math.min(MANUAL_LAPS_PER_PAGE, Math.max(1, totalLaps - lapOffset))
+      : Math.min(FIT_LAPS, totalLaps);
+  const lapCol = Math.min(
+    PM_LAP_COL,
+    Math.max(MIN_LAP_COL, Math.floor(PM_LAP_AREA / Math.max(1, lapsShown)))
+  );
   const livePageRows = useMemo(
     () =>
       allRows.slice(
@@ -217,21 +235,9 @@ function LapByLapOverlay({
   }, [liveMemberKey, livePageRows, exiting]);
 
   useEffect(() => {
-    if (pagingMode === "manual" || !rowsReady) return;
-    const lp = Math.max(1, lapPageCount);
-    const pp = Math.max(1, pilotPageCount);
-    const lastLap = lp - 1;
-    const decoded = decodeScreen(pageRef.current, lp, pp);
-    if (decoded.lapPage === lastLap) return;
-    const next = decoded.pilotPage * lp + lastLap;
-    pageRef.current = next;
-    setPage(next);
-  }, [pagingMode, lapPageCount, pilotPageCount, maxLaps, rowsReady]);
-
-  useEffect(() => {
     if (pagingMode === "manual" || !rowsReady || displayRows.length === 0) return;
-    const pp = Math.max(1, pilotPageCountRef.current);
-    if (pp <= 1) return;
+    const count = Math.max(1, screenCountRef.current);
+    if (count <= 1) return;
     const buildMs = displayRows.length * LL_ROW_STAGGER_MS + 350;
     let swapTimer: number | null = null;
     const hold = window.setTimeout(() => {
@@ -239,16 +245,14 @@ function LapByLapOverlay({
       swapTimer = window.setTimeout(() => {
         const lp = Math.max(1, lapPageCountRef.current);
         const pilots = Math.max(1, pilotPageCountRef.current);
-        const lastLap = lp - 1;
-        const decoded = decodeScreen(pageRef.current, lp, pilots);
-        const nextPilot = (decoded.pilotPage + 1) % pilots;
-        const next = nextPilot * lp + lastLap;
+        const next = decodeScreen(pageRef.current + 1, lp, pilots).screen;
         pageRef.current = next;
+        const decoded = decodeScreen(next, lp, pilots);
         const nextRows = allRowsRef.current.slice(
-          nextPilot * PILOT_PAGE_SIZE,
-          nextPilot * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
+          decoded.pilotPage * PILOT_PAGE_SIZE,
+          decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
         );
-        membershipRef.current = membershipKey(nextRows, lastLap);
+        membershipRef.current = membershipKey(nextRows, decoded.lapPage);
         setDisplayRows(nextRows);
         setPage(next);
         setAnimGen((g) => g + 1);

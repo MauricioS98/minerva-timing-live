@@ -333,52 +333,32 @@ export interface LapByLapRow {
   totalTimeMs: number;
 }
 
-function lapDetailsByPilot(
-  parsed: ParsedCsv
-): Map<string, { lapTimeFormatted: string; clockFormatted: string }[]> {
-  const map = new Map<string, ({ lapTimeFormatted: string; clockFormatted: string } | undefined)[]>();
-  for (const p of parsed.racePassages) {
+type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
+
+function lapDetailsByPilot(parsed: ParsedCsv): Map<string, LapDetail[]> {
+  const hits = new Map<string, Map<number, LapDetail>>();
+  for (const p of parsed.racePassages || []) {
     if (p.lapTimeMs == null || p.lapTimeMs <= 0) continue;
     const key = normalizeNumber(p.number);
-    if (!map.has(key)) map.set(key, []);
-    const item = {
+    if (!hits.has(key)) hits.set(key, new Map());
+    const byTm = hits.get(key)!;
+    if (byTm.has(p.tmPasosMs)) continue;
+    byTm.set(p.tmPasosMs, {
       lapTimeFormatted: formatMs(p.lapTimeMs),
       clockFormatted: p.tmPasosRaw?.trim() || formatMs(p.tmPasosMs, true),
-    };
-    const arr = map.get(key)!;
-    const lapNo = p.lapsCount;
-    const filled = arr.filter((d) => d?.lapTimeFormatted).length;
-    if (lapNo != null && lapNo > 0) {
-      const idx = lapNo - 1;
-      // Vueltas restarted after a new green: later laps would overwrite 1, 2, …
-      if (filled > 0 && lapNo <= filled && arr[idx]?.lapTimeFormatted) {
-        if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) arr.push(item);
-      } else if (!arr[idx]?.lapTimeFormatted) {
-        arr[idx] = item;
-      } else if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) {
-        arr.push(item);
-      }
-    } else {
-      arr.push(item);
-    }
+    });
   }
-  const dense = new Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>();
-  for (const [key, arr] of map) {
+  const dense = new Map<string, LapDetail[]>();
+  for (const [key, byTm] of hits) {
     dense.set(
       key,
-      Array.from({ length: arr.length }, (_, i) => {
-        const d = arr[i];
-        return {
-          lapTimeFormatted: d?.lapTimeFormatted || "",
-          clockFormatted: d?.clockFormatted || "",
-        };
-      })
+      [...byTm.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, d]) => d)
     );
   }
   return dense;
 }
-
-type LapDetail = { lapTimeFormatted: string; clockFormatted: string };
 
 /**
  * Unique-CSV dumps of one heat often still pick up another car's transponder
@@ -456,30 +436,33 @@ function fastestLapRows(
   });
 }
 
-/** Union laps by clock + time so a later dump does not erase earlier vueltas. */
+/** Union laps; a later shorter dump must not erase earlier vueltas. */
 function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
-  const keyOf = (d: LapDetail) => {
+  const filledA = a.filter((d) => d.lapTimeFormatted);
+  const filledB = b.filter((d) => d.lapTimeFormatted);
+  const primary = filledA.length >= filledB.length ? filledA : filledB;
+  const other = filledA.length >= filledB.length ? filledB : filledA;
+  const keyOf = (d: LapDetail, i: number) => {
     const clock = d.clockFormatted?.trim() || "";
-    const time = d.lapTimeFormatted?.trim() || "";
-    if (!time) return "";
-    return clock ? `${clock}|${time}` : `t:${time}`;
+    const time = d.lapTimeFormatted.trim();
+    return clock ? `${clock}|${time}` : `t:${time}|${i}`;
   };
   const seen = new Set<string>();
   const out: LapDetail[] = [];
-  for (const d of [...a, ...b]) {
-    if (!d.lapTimeFormatted) continue;
-    const k = keyOf(d);
-    if (k && seen.has(k)) continue;
-    if (k) seen.add(k);
+  const add = (d: LapDetail) => {
+    const k = keyOf(d, out.length);
+    if (seen.has(k)) return;
+    seen.add(k);
     out.push(d);
-  }
+  };
+  for (const d of primary) add(d);
+  for (const d of other) add(d);
   out.sort((x, y) => {
     const xc = parseTimeToMs(x.clockFormatted || "") ?? 0;
     const yc = parseTimeToMs(y.clockFormatted || "") ?? 0;
-    if (xc !== yc) return xc - yc;
-    return 0;
+    return xc - yc;
   });
-  return out.length > 0 ? out : a;
+  return out.length >= Math.max(filledA.length, filledB.length) ? out : primary;
 }
 
 function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
@@ -488,19 +471,7 @@ function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
   for (const [key, succ] of successive) {
     const timed = lapDetails.get(key) || [];
     const timedFilled = timed.filter((d) => d.lapTimeFormatted).length;
-    if (succ.length > timedFilled) {
-      const len = Math.max(timed.length, succ.length);
-      lapDetails.set(
-        key,
-        Array.from({ length: len }, (_, i) =>
-          timed[i]?.lapTimeFormatted
-            ? timed[i]
-            : succ[i] || { lapTimeFormatted: "", clockFormatted: "" }
-        )
-      );
-    } else if (!lapDetails.has(key) && succ.length > 0) {
-      lapDetails.set(key, succ);
-    }
+    if (timedFilled === 0 && succ.length > 0) lapDetails.set(key, succ);
   }
   return lapDetails;
 }
@@ -605,7 +576,7 @@ export function computeLapByLapResults(
     r.position = i + 1;
   });
 
-  const maxLaps = Math.max(0, ...rows.map((r) => r.lapTimesFormatted.length));
+  const maxLaps = Math.max(0, ...rows.map((r) => r.lapsCompleted));
   if (maxLaps > 0) {
     for (const r of rows) {
       while (r.lapTimesFormatted.length < maxLaps) r.lapTimesFormatted.push("");

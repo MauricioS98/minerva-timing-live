@@ -220,6 +220,16 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
 
     if (laps != null) {
       const prev = lastLaps.get(key);
+      const prevEl = lastElapsed.get(key);
+      const elapsedAdvanced = elapsed != null && (prevEl == null || elapsed > prevEl);
+      const clockAdvanced = p.tmPasosMs > (lastTm.get(key) ?? -1);
+      if (prev != null && laps < prev) {
+        lastLaps.set(key, laps);
+        if (elapsed != null) lastElapsed.set(key, elapsed);
+        lastTm.set(key, p.tmPasosMs);
+        kept.push(p);
+        continue;
+      }
       if (prev == null || laps > prev) {
         lastLaps.set(key, laps);
         if (elapsed != null) lastElapsed.set(key, elapsed);
@@ -228,9 +238,6 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
         continue;
       }
       // Same Vueltas number but a new timed pass (counter stuck / extra hit)
-      const prevEl = lastElapsed.get(key);
-      const elapsedAdvanced = elapsed != null && (prevEl == null || elapsed > prevEl);
-      const clockAdvanced = p.tmPasosMs > (lastTm.get(key) ?? -1);
       if (p.lapTimeMs != null && p.lapTimeMs > 0 && (elapsedAdvanced || clockAdvanced)) {
         if (elapsed != null) lastElapsed.set(key, elapsed);
         lastTm.set(key, p.tmPasosMs);
@@ -454,7 +461,7 @@ function passageKey(p: Passage): string {
   return `${String(p.number || "")
     .replace(/^#/, "")
     .trim()
-    .toUpperCase()}|${p.tmPasosMs}`;
+    .toUpperCase()}|${p.tmPasosMs}|${p.lapTimeMs ?? ""}`;
 }
 
 function unionPassages(a: Passage[], b: Passage[]): Passage[] {
