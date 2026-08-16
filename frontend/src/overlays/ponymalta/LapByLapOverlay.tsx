@@ -9,12 +9,15 @@ import { PonyMaltaSponsors } from "./PonyMaltaSponsors";
 import "./ponymalta.css";
 
 const PILOT_PAGE_SIZE = 2;
-const LAPS_PER_PAGE = 8;
 const PAGE_EXIT_MS = 280;
 const PANEL_EASE_MS = 600;
 const PM_POS_COL = 76;
 const PM_NAME_COL = 428;
 const PM_LAP_COL = 188;
+const LAPS_PER_PAGE = Math.max(
+  1,
+  Math.floor((1620 - PM_POS_COL - PM_NAME_COL) / PM_LAP_COL)
+);
 
 type LapViewRow = {
   key: string;
@@ -124,11 +127,9 @@ function LapByLapOverlay({
 }) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const totalLaps = Math.max(1, maxLaps);
-  const lapsShown = Math.min(LAPS_PER_PAGE, totalLaps);
-  const lapCol = Math.max(
-    118,
-    Math.min(PM_LAP_COL, Math.floor((1620 - PM_POS_COL - PM_NAME_COL) / lapsShown))
-  );
+  const lapsShown =
+    totalLaps > LAPS_PER_PAGE ? LAPS_PER_PAGE : totalLaps;
+  const lapCol = PM_LAP_COL;
 
   const pilotPageCount = Math.max(1, Math.ceil(allRows.length / PILOT_PAGE_SIZE) || 1);
   const lapPageCount = Math.max(1, Math.ceil(totalLaps / LAPS_PER_PAGE));
@@ -216,25 +217,38 @@ function LapByLapOverlay({
   }, [liveMemberKey, livePageRows, exiting]);
 
   useEffect(() => {
-    if (pagingMode === "manual" || !rowsReady || screenCount <= 1 || displayRows.length === 0) return;
+    if (pagingMode === "manual" || !rowsReady) return;
+    const lp = Math.max(1, lapPageCount);
+    const pp = Math.max(1, pilotPageCount);
+    const lastLap = lp - 1;
+    const decoded = decodeScreen(pageRef.current, lp, pp);
+    if (decoded.lapPage === lastLap) return;
+    const next = decoded.pilotPage * lp + lastLap;
+    pageRef.current = next;
+    setPage(next);
+  }, [pagingMode, lapPageCount, pilotPageCount, maxLaps, rowsReady]);
+
+  useEffect(() => {
+    if (pagingMode === "manual" || !rowsReady || displayRows.length === 0) return;
+    const pp = Math.max(1, pilotPageCountRef.current);
+    if (pp <= 1) return;
     const buildMs = displayRows.length * LL_ROW_STAGGER_MS + 350;
     let swapTimer: number | null = null;
     const hold = window.setTimeout(() => {
       setExiting(true);
       swapTimer = window.setTimeout(() => {
-        const count = Math.max(1, screenCountRef.current);
-        const next = (pageRef.current + 1) % count;
+        const lp = Math.max(1, lapPageCountRef.current);
+        const pilots = Math.max(1, pilotPageCountRef.current);
+        const lastLap = lp - 1;
+        const decoded = decodeScreen(pageRef.current, lp, pilots);
+        const nextPilot = (decoded.pilotPage + 1) % pilots;
+        const next = nextPilot * lp + lastLap;
         pageRef.current = next;
-        const decoded = decodeScreen(
-          next,
-          lapPageCountRef.current,
-          pilotPageCountRef.current
-        );
         const nextRows = allRowsRef.current.slice(
-          decoded.pilotPage * PILOT_PAGE_SIZE,
-          decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
+          nextPilot * PILOT_PAGE_SIZE,
+          nextPilot * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
         );
-        membershipRef.current = membershipKey(nextRows, decoded.lapPage);
+        membershipRef.current = membershipKey(nextRows, lastLap);
         setDisplayRows(nextRows);
         setPage(next);
         setAnimGen((g) => g + 1);
@@ -245,7 +259,7 @@ function LapByLapOverlay({
       window.clearTimeout(hold);
       if (swapTimer != null) window.clearTimeout(swapTimer);
     };
-  }, [screenCount, safePage, animGen, displayRows.length, rowsReady, pageHoldMs, pagingMode]);
+  }, [safePage, animGen, displayRows.length, rowsReady, pageHoldMs, pagingMode]);
 
   useEffect(() => {
     if (pagingMode !== "manual" || !rowsReady) return;
@@ -282,7 +296,10 @@ function LapByLapOverlay({
 
   const gridTemplate = `${PM_POS_COL}px ${PM_NAME_COL}px repeat(${lapsShown}, ${lapCol}px)`;
   const boardWidth = PM_POS_COL + PM_NAME_COL + lapsShown * lapCol;
-  const leaderLaps = allRows[0]?.laps.filter(Boolean).length || maxLaps || "";
+  const leaderLaps = Math.max(
+    maxLaps,
+    ...allRows.map((r) => r.laps.filter(Boolean).length)
+  );
 
   if (error && allRows.length === 0) {
     return (

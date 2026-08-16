@@ -209,6 +209,7 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
   );
   const lastLaps = new Map<string, number>();
   const lastElapsed = new Map<string, number>();
+  const lastTm = new Map<string, number>();
   const kept: Passage[] = [];
   let skipped = 0;
 
@@ -219,19 +220,23 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
 
     if (laps != null) {
       const prev = lastLaps.get(key);
-      if (prev == null) {
+      if (prev == null || laps > prev) {
         lastLaps.set(key, laps);
         if (elapsed != null) lastElapsed.set(key, elapsed);
+        lastTm.set(key, p.tmPasosMs);
         kept.push(p);
         continue;
       }
-      if (laps > prev) {
-        lastLaps.set(key, laps);
+      // Same Vueltas number but a new timed pass (counter stuck / extra hit)
+      const prevEl = lastElapsed.get(key);
+      const elapsedAdvanced = elapsed != null && (prevEl == null || elapsed > prevEl);
+      const clockAdvanced = p.tmPasosMs > (lastTm.get(key) ?? -1);
+      if (p.lapTimeMs != null && p.lapTimeMs > 0 && (elapsedAdvanced || clockAdvanced)) {
         if (elapsed != null) lastElapsed.set(key, elapsed);
+        lastTm.set(key, p.tmPasosMs);
         kept.push(p);
         continue;
       }
-      // Same or lower Vueltas than last accepted hit → deleted in Orbits 4
       skipped++;
       continue;
     }
@@ -245,6 +250,7 @@ export function filterOrbits4DeletedPassages(passages: Passage[]): {
       }
       lastElapsed.set(key, elapsed);
     }
+    lastTm.set(key, p.tmPasosMs);
 
     kept.push(p);
   }

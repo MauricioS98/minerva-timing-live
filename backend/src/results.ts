@@ -347,8 +347,13 @@ function lapDetailsByPilot(
     };
     const arr = map.get(key)!;
     const lapNo = p.lapsCount;
-    if (lapNo != null && lapNo > 0) arr[lapNo - 1] = item;
-    else arr.push(item);
+    if (lapNo != null && lapNo > 0) {
+      const idx = lapNo - 1;
+      if (!arr[idx]?.lapTimeFormatted) arr[idx] = item;
+      else if (arr[idx].lapTimeFormatted !== item.lapTimeFormatted) arr.push(item);
+    } else {
+      arr.push(item);
+    }
   }
   const dense = new Map<string, { lapTimeFormatted: string; clockFormatted: string }[]>();
   for (const [key, arr] of map) {
@@ -674,7 +679,22 @@ function lastLapFromPart(
     }
   }
 
-  const laps = lastValid.lapsCount;
+  const lapsFromCount = lastValid.lapsCount;
+  const timedLaps = (() => {
+    let n = 0;
+    let maxV = 0;
+    for (const slot of part?.csvs || []) {
+      const slotPilot = slot.pilotNumber ? normalizeNumber(slot.pilotNumber) : "";
+      for (const p of slot.parsed?.racePassages || []) {
+        if (normalizeNumber(p.number) !== key && slotPilot !== key) continue;
+        if (String(p.name || "").trim() === "" && slotPilot !== key) continue;
+        if (p.lapsCount != null && p.lapsCount > maxV) maxV = p.lapsCount;
+        if (p.lapTimeMs != null && p.lapTimeMs > 0) n++;
+      }
+    }
+    return Math.max(n, maxV);
+  })();
+  const laps = Math.max(lapsFromCount ?? 0, timedLaps) || lapsFromCount;
   if (!lastWithLap || lastWithLap.lapTimeMs == null) {
     return laps != null ? { lastLapMs: 0, lastLapFormatted: "", laps } : null;
   }

@@ -11,7 +11,7 @@ import type { Event } from "../types";
 const PM_PAGE_SIZE = 2;
 const RB_PAGE_SIZE = 8;
 const LAP_PILOT_SIZE = 2;
-const LAPS_PER_PAGE = 8;
+const LAPS_PER_PAGE = 5;
 const TOP = 40;
 
 type BoardData = Awaited<ReturnType<typeof api.getBoard>>;
