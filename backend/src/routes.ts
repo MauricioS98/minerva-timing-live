@@ -327,6 +327,9 @@ router.post("/events/:id/tests", async (req, res) => {
     penalties: [],
   };
   event.tests.push(test);
+  event.tests.forEach((t, i) => {
+    t.order = i;
+  });
   await saveEvent(event);
   res.status(201).json(test);
 });
@@ -375,7 +378,9 @@ router.delete("/events/:id/tests/:testId", async (req, res) => {
   if (!test) return res.status(404).json({ error: "Prueba no encontrada" });
   const block = assertCanDeleteTest(event, test);
   if (block) return res.status(409).json({ error: block });
-  event.tests = event.tests.filter((t) => t.id !== req.params.testId);
+  event.tests = event.tests
+    .filter((t) => t.id !== req.params.testId)
+    .map((t, i) => ({ ...t, order: i }));
   event.resultsBoard = (event.resultsBoard || []).filter(
     (e) => !(e.kind === "unified" && e.refId === req.params.testId)
   );
@@ -414,6 +419,9 @@ router.post("/events/:id/tests/:testId/parts", async (req, res) => {
     csvs: [],
   };
   test.parts.push(part);
+  test.parts.forEach((p, i) => {
+    p.order = i;
+  });
   await saveEvent(event);
   res.status(201).json(part);
 });

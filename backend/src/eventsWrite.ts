@@ -325,7 +325,9 @@ export async function persistEvent(event: Event): Promise<Event> {
       [event.id]
     );
 
-    for (const p of event.timingPoints || []) {
+    for (let i = 0; i < (event.timingPoints || []).length; i++) {
+      const p = event.timingPoints[i];
+      p.order = i;
       await q(
         client,
         `INSERT INTO timing_points (id, event_id, name, offset_ms, sort_order, role)
@@ -335,7 +337,7 @@ export async function persistEvent(event: Event): Promise<Event> {
            offset_ms = EXCLUDED.offset_ms,
            sort_order = EXCLUDED.sort_order,
            role = EXCLUDED.role`,
-        [p.id, event.id, p.name, p.offsetMs || 0, p.order, p.role ?? null]
+        [p.id, event.id, p.name, p.offsetMs || 0, i, p.role ?? null]
       );
     }
     const pointIds = uuidList((event.timingPoints || []).map((p) => p.id));
@@ -379,7 +381,9 @@ export async function persistEvent(event: Event): Promise<Event> {
       [event.id]
     );
 
-    for (const t of event.tests || []) {
+    for (let ti = 0; ti < (event.tests || []).length; ti++) {
+      const t = event.tests[ti];
+      t.order = ti;
       await q(
         client,
         `INSERT INTO tests (
@@ -401,7 +405,7 @@ export async function persistEvent(event: Event): Promise<Event> {
           t.name,
           t.description || "",
           Boolean(t.showDescriptionInPdf),
-          t.order,
+          ti,
           t.timingMode || "point_to_point",
           t.fromPointId || null,
           t.toPointId || null,
@@ -432,7 +436,9 @@ export async function persistEvent(event: Event): Promise<Event> {
         [t.id]
       );
 
-      for (const part of t.parts || []) {
+      for (let pi = 0; pi < (t.parts || []).length; pi++) {
+        const part = t.parts[pi];
+        part.order = pi;
         const scoring =
           part.csvInputMode === "combined" || part.combinedMode
             ? part.combinedScoring || "time"
@@ -466,7 +472,7 @@ export async function persistEvent(event: Event): Promise<Event> {
             t.id,
             event.id,
             part.name,
-            part.order,
+            pi,
             Boolean(part.combinedMode),
             csvMode,
             scoring,
@@ -571,7 +577,9 @@ export async function persistEvent(event: Event): Promise<Event> {
     }
 
     await q(client, `DELETE FROM results_board WHERE event_id = $1`, [event.id]);
-    for (const b of event.resultsBoard || []) {
+    for (let i = 0; i < (event.resultsBoard || []).length; i++) {
+      const b = event.resultsBoard[i];
+      b.order = i;
       await q(
         client,
         `INSERT INTO results_board (
@@ -585,7 +593,7 @@ export async function persistEvent(event: Event): Promise<Event> {
           b.partId ?? null,
           b.title,
           b.publishedAt || new Date().toISOString(),
-          b.order,
+          i,
         ]
       );
     }
