@@ -467,50 +467,24 @@ function collapseConsecutiveDupes(list: LapDetail[]): LapDetail[] {
   return out;
 }
 
-/** ABCABC or ABAB → ABC / AB (same CSV re-uploaded into the union). */
-function stripRepeatedBlocks(list: LapDetail[]): LapDetail[] {
-  let filled = collapseConsecutiveDupes(list);
-  let changed = true;
-  while (changed && filled.length >= 2) {
-    changed = false;
-    const t = filled.map((d) => d.lapTimeFormatted);
-    for (let k = Math.floor(t.length / 2); k >= 1; k--) {
-      let match = true;
-      for (let i = 0; i < k; i++) {
-        if (t[i] !== t[k + i]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        filled = [...filled.slice(0, k), ...filled.slice(2 * k)];
-        changed = true;
-        break;
-      }
-    }
+/** One CSV re-uploaded onto itself (ABAB). Do not run this on laps from different files. */
+function dedupeWithinFile(list: LapDetail[]): LapDetail[] {
+  const filled = collapseConsecutiveDupes(list);
+  if (filled.length >= 2 && filled.length % 2 === 0) {
+    const half = filled.length / 2;
+    const doubled = filled
+      .slice(0, half)
+      .every((d, i) => d.lapTimeFormatted === filled[half + i].lapTimeFormatted);
+    if (doubled) return filled.slice(0, half);
   }
   return filled;
 }
 
-function isContiguousSubsequence(needle: string[], hay: string[]): boolean {
-  if (needle.length === 0) return true;
-  if (needle.length > hay.length) return false;
-  for (let i = 0; i <= hay.length - needle.length; i++) {
-    if (needle.every((t, j) => t === hay[i + j])) return true;
-  }
-  return false;
-}
-
 function concatLapDetails(a: LapDetail[], b: LapDetail[]): LapDetail[] {
-  const A = stripRepeatedBlocks(a);
-  const B = stripRepeatedBlocks(b);
-  if (!B.length) return A;
-  if (!A.length) return B;
-  const ta = A.map((d) => d.lapTimeFormatted);
-  const tb = B.map((d) => d.lapTimeFormatted);
-  if (isContiguousSubsequence(tb, ta)) return A;
-  if (isContiguousSubsequence(ta, tb)) return B;
-  return stripRepeatedBlocks([...A, ...B]);
+  return [
+    ...a.filter((d) => d.lapTimeFormatted),
+    ...b.filter((d) => d.lapTimeFormatted),
+  ];
 }
 
 function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
@@ -522,7 +496,7 @@ function lapDetailsForParsed(parsed: ParsedCsv): Map<string, LapDetail[]> {
     if (timedFilled === 0 && succ.length > 0) lapDetails.set(key, succ);
   }
   for (const [key, list] of lapDetails) {
-    lapDetails.set(key, stripRepeatedBlocks(list));
+    lapDetails.set(key, dedupeWithinFile(list));
   }
   return lapDetails;
 }
