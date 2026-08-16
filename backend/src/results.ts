@@ -187,7 +187,7 @@ interface LapPilotResult {
 /** Lap count + total elapsed time per pilot from combined CSV */
 function lapResultsByPilot(parsed: ParsedCsv): Map<string, LapPilotResult> {
   const byPilot = new Map<string, { number: string; name: string; passages: typeof parsed.racePassages }>();
-  for (const p of parsed.racePassages) {
+  for (const p of parsed.racePassages || []) {
     const key = normalizeNumber(p.number);
     if (!byPilot.has(key)) {
       byPilot.set(key, { number: p.number, name: p.name, passages: [] });
@@ -197,13 +197,16 @@ function lapResultsByPilot(parsed: ParsedCsv): Map<string, LapPilotResult> {
 
   const result = new Map<string, LapPilotResult>();
   for (const [key, data] of byPilot) {
-    const completed = data.passages.filter((p) => p.lapTimeMs != null && p.lapTimeMs > 0);
+    const seenTm = new Set<number>();
+    const completed = data.passages.filter((p) => {
+      if (p.lapTimeMs == null || p.lapTimeMs <= 0) return false;
+      if (seenTm.has(p.tmPasosMs)) return false;
+      seenTm.add(p.tmPasosMs);
+      return true;
+    });
     if (completed.length === 0) continue;
 
-    const lapCounts = completed
-      .map((p) => p.lapsCount)
-      .filter((n): n is number => n != null && n > 0);
-    const laps = lapCounts.length > 0 ? Math.max(...lapCounts) : completed.length;
+    const laps = completed.length;
 
     const latest = (list: typeof completed) =>
       list.reduce((best, p) =>
@@ -254,12 +257,15 @@ function mergedLapResultsFromPart(
     for (const [key, p] of lapResultsByPilot(parsed)) {
       const prev = result.get(key);
       if (!prev) {
-        result.set(key, p);
+        result.set(key, { ...p });
         continue;
       }
-      const better =
-        p.laps > prev.laps || (p.laps === prev.laps && p.totalTimeMs < prev.totalTimeMs);
-      if (better) result.set(key, p);
+      result.set(key, {
+        number: prev.number,
+        name: pickName(p.name, prev.name),
+        laps: prev.laps + p.laps,
+        totalTimeMs: prev.totalTimeMs + p.totalTimeMs,
+      });
     }
   }
   return result;
@@ -436,6 +442,13 @@ function fastestLapRows(
   });
 }
 
+function concatLapDetails(a: LapDetail[], b: LapDetail[]): LapDetail[] {
+  return [
+    ...a.filter((d) => d.lapTimeFormatted),
+    ...b.filter((d) => d.lapTimeFormatted),
+  ];
+}
+
 /** Union laps; a later shorter dump must not erase earlier vueltas. */
 function mergeLapDetailLists(a: LapDetail[], b: LapDetail[]): LapDetail[] {
   const filledA = a.filter((d) => d.lapTimeFormatted);
@@ -519,6 +532,8 @@ export function computeLapByLapResults(
   let anyCsv = false;
 
   for (const src of sources) {
+    const appendFiles =
+      csvInputModeOf(src) === "combined" || csvInputModeOf(src) === "pilots";
     for (const parsed of parsedListFromPart(src, event)) {
       anyCsv = true;
       for (const p of parsed.racePassages || []) {
@@ -527,7 +542,11 @@ export function computeLapByLapResults(
       }
       const details = lapDetailsForParsed(parsed);
       for (const [key, list] of details) {
-        lapDetails.set(key, mergeLapDetailLists(lapDetails.get(key) || [], list));
+        const prev = lapDetails.get(key) || [];
+        lapDetails.set(
+          key,
+          appendFiles ? concatLapDetails(prev, list) : mergeLapDetailLists(prev, list)
+        );
       }
     }
   }
