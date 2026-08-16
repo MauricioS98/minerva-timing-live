@@ -16,9 +16,7 @@ const PM_NAME_COL = 428;
 const PM_LAP_COL = 188;
 const PM_BOARD_MAX = 1620;
 const PM_LAP_AREA = PM_BOARD_MAX - PM_POS_COL - PM_NAME_COL;
-const MIN_LAP_COL = 100;
-const FIT_LAPS = Math.max(1, Math.floor(PM_LAP_AREA / MIN_LAP_COL));
-const MANUAL_LAPS_PER_PAGE = 5;
+const MIN_LAP_COL = 88;
 
 type LapViewRow = {
   key: string;
@@ -137,10 +135,15 @@ function LapByLapOverlay({
 }) {
   const pageHoldMs = Math.min(120, Math.max(3, Math.round(pageHoldSeconds || 10))) * 1000;
   const totalLaps = Math.max(1, maxLaps);
-  const lapPageCount =
-    pagingMode === "manual" ? Math.max(1, Math.ceil(totalLaps / MANUAL_LAPS_PER_PAGE)) : 1;
+  const lapsShown = totalLaps;
+  const lapOffset = 0;
+  const lapCol = Math.min(
+    PM_LAP_COL,
+    Math.max(MIN_LAP_COL, Math.floor(PM_LAP_AREA / Math.max(1, lapsShown)))
+  );
+  const lapPageCount = 1;
   const pilotPageCount = Math.max(1, Math.ceil(allRows.length / PILOT_PAGE_SIZE) || 1);
-  const screenCount = pilotPageCount * lapPageCount;
+  const screenCount = pilotPageCount;
   const [page, setPage] = useState(0);
   const [exiting, setExiting] = useState(false);
   const [panelIn, setPanelIn] = useState(false);
@@ -159,22 +162,10 @@ function LapByLapOverlay({
   lapPageCountRef.current = lapPageCount;
   pilotPageCountRef.current = pilotPageCount;
 
-  const { screen: safePage, pilotPage: safePilotPage, lapPage: safeLapPage } = decodeScreen(
+  const { screen: safePage, pilotPage: safePilotPage } = decodeScreen(
     page,
     lapPageCount,
     pilotPageCount
-  );
-  const lapOffset =
-    pagingMode === "manual"
-      ? safeLapPage * MANUAL_LAPS_PER_PAGE
-      : Math.max(0, totalLaps - Math.min(FIT_LAPS, totalLaps));
-  const lapsShown =
-    pagingMode === "manual"
-      ? Math.min(MANUAL_LAPS_PER_PAGE, Math.max(1, totalLaps - lapOffset))
-      : Math.min(FIT_LAPS, totalLaps);
-  const lapCol = Math.min(
-    PM_LAP_COL,
-    Math.max(MIN_LAP_COL, Math.floor(PM_LAP_AREA / Math.max(1, lapsShown)))
   );
   const livePageRows = useMemo(
     () =>
@@ -185,8 +176,8 @@ function LapByLapOverlay({
     [allRows, safePilotPage]
   );
   const liveMemberKey = useMemo(
-    () => membershipKey(livePageRows, safeLapPage),
-    [livePageRows, safeLapPage]
+    () => membershipKey(livePageRows, 0),
+    [livePageRows]
   );
   const [displayRows, setDisplayRows] = useState<LapViewRow[]>([]);
   const membershipRef = useRef("");
@@ -252,7 +243,7 @@ function LapByLapOverlay({
           decoded.pilotPage * PILOT_PAGE_SIZE,
           decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
         );
-        membershipRef.current = membershipKey(nextRows, decoded.lapPage);
+        membershipRef.current = membershipKey(nextRows, 0);
         setDisplayRows(nextRows);
         setPage(next);
         setAnimGen((g) => g + 1);
@@ -267,11 +258,9 @@ function LapByLapOverlay({
 
   useEffect(() => {
     if (pagingMode !== "manual" || !rowsReady) return;
-    const lp = Math.max(1, lapPageCount);
     const pp = Math.max(1, pilotPageCount);
     const pilot = Math.max(0, Math.min(pp - 1, Math.floor(Number(remotePilotPage) || 0)));
-    const lap = Math.max(0, Math.min(lp - 1, Math.floor(Number(remoteLapPage) || 0)));
-    const next = decodeScreen(pilot * lp + lap, lp, pp).screen;
+    const next = decodeScreen(pilot, 1, pp).screen;
     if (next === pageRef.current) return;
     setExiting(true);
     const swapTimer = window.setTimeout(() => {
@@ -281,14 +270,14 @@ function LapByLapOverlay({
         decoded.pilotPage * PILOT_PAGE_SIZE,
         decoded.pilotPage * PILOT_PAGE_SIZE + PILOT_PAGE_SIZE
       );
-      membershipRef.current = membershipKey(nextRows, decoded.lapPage);
+      membershipRef.current = membershipKey(nextRows, 0);
       setDisplayRows(nextRows);
       setPage(next);
       setAnimGen((g) => g + 1);
       setExiting(false);
     }, PAGE_EXIT_MS);
     return () => window.clearTimeout(swapTimer);
-  }, [pagingMode, remotePilotPage, remoteLapPage, lapPageCount, pilotPageCount, rowsReady]);
+  }, [pagingMode, remotePilotPage, pilotPageCount, rowsReady]);
 
   useEffect(() => {
     if (pagingMode === "manual") return;
