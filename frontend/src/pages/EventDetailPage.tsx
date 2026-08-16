@@ -2074,7 +2074,13 @@ function CsvDrop({
   const loaded = Boolean(filename);
   const take = (files: FileList | null) => {
     if (!files?.length) return;
-    const list = multiple ? [...files] : files[0] ? [files[0]] : [];
+    const list: File[] = multiple
+      ? Array.from({ length: files.length }, (_, i) => files.item(i)).filter(
+          (f): f is File => Boolean(f)
+        )
+      : files[0]
+        ? [files[0]]
+        : [];
     void (async () => {
       for (const f of list) await onFile(f);
     })();
